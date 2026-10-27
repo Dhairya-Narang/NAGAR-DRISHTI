@@ -6,7 +6,9 @@ import {
   verify,
   escalate,
   batchAssign,
-  batchResolve
+  batchResolve,
+  listStagnant,
+  escalate5Days
 } from '../controllers/adminController.js';
 import {
   getAdminSummary,
@@ -63,6 +65,12 @@ router.post('/ai/review/:id', reviewSuggestion);
 router.post('/ai/auto-assign', autoAssignDepartments);
 
 /**
+ * @route   GET /api/admin/complaints/stagnant
+ * @desc    Get all complaints that have passed 5+ days without response
+ */
+router.get('/complaints/stagnant', listStagnant);
+
+/**
  * @route   GET /api/admin/complaints
  * @desc    Filter and search complaints across the municipality
  */
@@ -73,6 +81,13 @@ router.get('/complaints', list);
  * @desc    Assign complaint to department
  */
 router.post('/complaints/:id/assign', assign);
+
+/**
+ * @route   POST /api/admin/complaints/:id/escalate-5days
+ * @desc    Escalate a 5-day unresponded complaint and send email to higher authorities
+ */
+router.post('/complaints/:id/escalate-5days', escalate5Days);
+
 
 /**
  * @route   POST /api/admin/complaints/:id/resolve

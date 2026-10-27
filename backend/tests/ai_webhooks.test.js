@@ -170,4 +170,32 @@ test('Phase 7: AI Assistant & n8n Workflow Webhooks', async (t) => {
     assert.strictEqual(slaRes.status, 200);
     assert.ok(slaData.data.reply.includes('12 Hours'));
   });
+
+  await t.test('GET /api/admin/complaints/stagnant retrieves stagnant complaints exceeding threshold', async () => {
+    const res = await fetch(`${baseUrl}/admin/complaints/stagnant?days=5`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    const data = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(data.success, true);
+    assert.ok(Array.isArray(data.data));
+  });
+
+  await t.test('POST /api/webhooks/n8n/escalate-unresponded triggers 5-day SLA escalation and email alert', async () => {
+    const res = await fetch(`${baseUrl}/webhooks/n8n/escalate-unresponded`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        complaint_id: testComplaint.id,
+        days_unresponded: 5.5,
+        reason: 'Issue passed 5 days without response from assigned department. Escalated to Higher Authorities.'
+      })
+    });
+    const data = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(data.success, true);
+    assert.strictEqual(data.data.emailSent, true);
+    assert.strictEqual(data.data.daysUnresponded, 5.5);
+  });
 });
+

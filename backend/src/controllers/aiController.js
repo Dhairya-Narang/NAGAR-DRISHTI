@@ -6,7 +6,12 @@ import {
   citizenAiChat,
   autoAssignDepartmentsByAi
 } from '../services/aiService.js';
+import {
+  escalateStagnantComplaint,
+  batchEscalateStagnant
+} from '../services/adminService.js';
 import { env } from '../config/env.js';
+
 
 /**
  * @route   POST /api/webhooks/n8n/suggestions
@@ -90,6 +95,47 @@ export const handleWebhookSlaAlert = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @route   POST /api/webhooks/n8n/escalate-unresponded
+ * @desc    Receive 5-day unresponded escalation webhook from n8n Workflow C
+ * @access  Webhook / System
+ */
+export const handleWebhookEscalateUnresponded = async (req, res, next) => {
+  try {
+    const { complaint_id, days_unresponded, reason, send_email } = req.body || {};
+
+    if (complaint_id) {
+      const result = await escalateStagnantComplaint({
+        complaintId: complaint_id,
+        daysUnresponded: days_unresponded || 5,
+        reason,
+        sendEmail: send_email !== false
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Complaint #${result.complaint?.public_number || complaint_id} escalated to Higher Authorities.`,
+        data: result
+      });
+    } else {
+      // Batch scan and escalate all stagnant complaints
+      const result = await batchEscalateStagnant({
+        daysThreshold: days_unresponded || 5,
+        sendEmail: send_email !== false
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Evaluated and escalated ${result.count} unresponded complaint(s) to Higher Authorities.`,
+        data: result
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 /**
  * @route   GET /api/admin/ai/pending

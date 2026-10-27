@@ -1,4 +1,8 @@
 import { query, pool } from '../config/db.js';
+import { sendEscalationEmail } from './emailService.js';
+import { createNotification } from './notificationService.js';
+import { env } from '../config/env.js';
+
 
 // In-memory reference for mock fallback
 let mockComplaintsRef = null;
@@ -549,4 +553,208 @@ export const resolveCluster = async ({ complaintIds, resolutionNotes, adminUser 
   }
   return updatedList;
 };
+
+/**
+ * Retrieve complaints that have exceeded the days threshold without response/resolution
+ */
+export const getStagnantComplaints = async ({ daysThreshold = 5 } = {}) => {
+  const threshold = Math.max(1, parseInt(daysThreshold, 10) || 5);
+
+  if (pool) {
+    const res = await query(
+      `SELECT c.*,
+              u.name as reporter_name,
+              u.email as reporter_email,
+              u.phone as reporter_phone,
+              cat.name as category_name,
+              d.name as department_name,
+              d.contact_email as department_email,
+              ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - c.created_at)) / 86400, 1) as days_stagnant
+       FROM complaints c
+       LEFT JOIN users u ON c.reporter_user_id = u.id
+       LEFT JOIN categories cat ON c.category_id = cat.id
+       LEFT JOIN departments d ON c.department_id = d.id
+       WHERE c.status != 'Resolved'
+         AND (
+           c.created_at <= CURRENT_TIMESTAMP - ($1 || ' days')::INTERVAL
+           OR (c.status = 'Pending' AND c.created_at <= CURRENT_TIMESTAMP - ($1 || ' days')::INTERVAL)
+         )
+       ORDER BY c.created_at ASC`,
+      [threshold]
+    );
+
+    return res.rows.map(comp => ({
+      ...comp,
+      higher_authority_emails: [
+        env.HIGHER_AUTHORITY_EMAIL || 'admin@nagardrishti.gov.in',
+        ...(comp.department_email ? [comp.department_email] : [])
+      ]
+    }));
+  } else {
+    // In-memory mock
+    const items = global.__mockComplaintsList || [];
+    const now = Date.now();
+    return items
+      .filter(c => c.status !== 'Resolved')
+      .map(comp => {
+        const createdTime = new Date(comp.created_at || now).getTime();
+        const daysStagnant = Math.round((now - createdTime) / (1000 * 60 * 60 * 24));
+        return {
+          ...comp,
+          days_stagnant: daysStagnant,
+          higher_authority_emails: [env.HIGHER_AUTHORITY_EMAIL || 'admin@nagardrishti.gov.in']
+        };
+      })
+      .filter(c => c.days_stagnant >= threshold);
+  }
+};
+
+/**
+ * Escalate a complaint exceeding 5 days without response and dispatch notification email to higher authorities
+ */
+export const escalateStagnantComplaint = async ({
+  complaintId,
+  daysUnresponded = 5,
+  reason = null,
+  sendEmail = true,
+  adminUser = null
+}) => {
+  const reasonText = reason || `Exceeded ${daysUnresponded} days without response or action from assigned department. Automated escalation to Higher Authorities.`;
+
+  if (pool) {
+    const compRes = await query(
+      `SELECT c.*,
+              u.name as reporter_name,
+              u.email as reporter_email,
+              u.phone as reporter_phone,
+              cat.name as category_name,
+              d.name as department_name,
+              d.contact_email as department_email,
+              ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - c.created_at)) / 86400, 1) as days_stagnant
+       FROM complaints c
+       LEFT JOIN users u ON c.reporter_user_id = u.id
+       LEFT JOIN categories cat ON c.category_id = cat.id
+       LEFT JOIN departments d ON c.department_id = d.id
+       WHERE c.id = $1`,
+      [complaintId]
+    );
+
+    if (compRes.rows.length === 0) {
+      const err = new Error('Complaint not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const complaint = compRes.rows[0];
+    const days = complaint.days_stagnant || daysUnresponded;
+
+    // Escalate complaint priority to urgent and flag is_escalated
+    const updateRes = await query(
+      `UPDATE complaints
+       SET is_escalated = true,
+           escalation_reason = $1,
+           priority = 'urgent',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [reasonText, complaintId]
+    );
+    const updated = updateRes.rows[0];
+
+    // Status history
+    await query(
+      `INSERT INTO status_history (complaint_id, old_status, new_status, changed_by, note)
+       VALUES ($1, $2, $2, $3, $4)`,
+      [complaintId, complaint.status, adminUser?.id || null, `5-Day SLA Escalation: ${reasonText}`]
+    );
+
+    // Activity log
+    await query(
+      `INSERT INTO activity_log (action, entity_type, entity_id, summary, metadata)
+       VALUES ('COMPLAINT_ESCALATED_5DAYS', 'complaint', $1, $2, $3)`,
+      [
+        complaintId,
+        `Complaint ${complaint.public_number} automatically escalated to Higher Authorities (5+ days unresponded)`,
+        JSON.stringify({
+          daysUnresponded: days,
+          reason: reasonText,
+          escalatedPriority: 'urgent',
+          workflow: 'Workflow_C_5Day_Escalation'
+        })
+      ]
+    );
+
+    // Create In-App Notification for Municipal Administrators
+    const adminUsers = await query(`SELECT id FROM users WHERE role = 'admin' LIMIT 5`);
+    for (const admin of adminUsers.rows) {
+      await createNotification({
+        recipientUserId: admin.id,
+        complaintId,
+        title: `🚨 5-Day SLA Breach: #${complaint.public_number}`,
+        message: `Complaint #${complaint.public_number} ("${complaint.title}") has exceeded 5 days without response and is escalated to Higher Authorities.`,
+        type: 'sla_warning'
+      });
+    }
+
+
+    // Dispatch Email to Higher Authorities
+    let emailResult = null;
+    if (sendEmail) {
+      const higherAuthorityEmail = env.HIGHER_AUTHORITY_EMAIL || 'admin@nagardrishti.gov.in';
+      const departmentEmail = complaint.department_email || null;
+      emailResult = await sendEscalationEmail({
+        to: higherAuthorityEmail,
+        cc: departmentEmail && departmentEmail !== higherAuthorityEmail ? departmentEmail : null,
+        complaint,
+        daysUnresponded: days,
+        escalationReason: reasonText
+      });
+    }
+
+    return {
+      success: true,
+      complaint: updated,
+      daysUnresponded: days,
+      escalatedTo: env.HIGHER_AUTHORITY_EMAIL || 'admin@nagardrishti.gov.in',
+      emailSent: !!emailResult
+    };
+  } else {
+    // In-memory fallback
+    return {
+      success: true,
+      complaintId,
+      daysUnresponded,
+      escalatedTo: env.HIGHER_AUTHORITY_EMAIL || 'admin@nagardrishti.gov.in',
+      emailSent: true
+    };
+  }
+};
+
+/**
+ * Batch scan and escalate all complaints exceeding 5 days without response
+ */
+export const batchEscalateStagnant = async ({ daysThreshold = 5, sendEmail = true } = {}) => {
+  const stagnantList = await getStagnantComplaints({ daysThreshold });
+  const results = [];
+
+  for (const comp of stagnantList) {
+    try {
+      const res = await escalateStagnantComplaint({
+        complaintId: comp.id,
+        daysUnresponded: comp.days_stagnant || daysThreshold,
+        sendEmail
+      });
+      results.push(res);
+    } catch (e) {
+      console.warn(`Could not escalate complaint ${comp.id}:`, e.message);
+    }
+  }
+
+  return {
+    success: true,
+    count: results.length,
+    escalated: results
+  };
+};
+
 

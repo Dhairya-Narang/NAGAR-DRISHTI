@@ -1,7 +1,8 @@
 import express from 'express';
 import {
   handleWebhookSuggestion,
-  handleWebhookSlaAlert
+  handleWebhookSlaAlert,
+  handleWebhookEscalateUnresponded
 } from '../controllers/aiController.js';
 
 const router = express.Router();
@@ -18,4 +19,11 @@ router.post('/n8n/suggestions', handleWebhookSuggestion);
  */
 router.post('/n8n/sla-alert', handleWebhookSlaAlert);
 
+/**
+ * @route   POST /api/webhooks/n8n/escalate-unresponded
+ * @desc    Trigger automated 5-day unresponded higher authority email escalation from n8n
+ */
+router.post('/n8n/escalate-unresponded', handleWebhookEscalateUnresponded);
+
 export default router;
+

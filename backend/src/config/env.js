@@ -26,6 +26,15 @@ export const env = {
   N8N_WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET || '',
   
   UPLOAD_MAX_SIZE_MB: parseInt(process.env.UPLOAD_MAX_SIZE_MB || '10', 10),
-  
+
+  SMTP_HOST: process.env.SMTP_HOST || '',
+  SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.SMTP_PASS || '',
+  SMTP_FROM: process.env.SMTP_FROM || 'escalations@nagardrishti.gov.in',
+  HIGHER_AUTHORITY_EMAIL: process.env.HIGHER_AUTHORITY_EMAIL || 'admin@nagardrishti.gov.in',
+  APP_URL: process.env.APP_URL || 'http://localhost:3000',
+
   isProduction: process.env.NODE_ENV === 'production'
 };
+

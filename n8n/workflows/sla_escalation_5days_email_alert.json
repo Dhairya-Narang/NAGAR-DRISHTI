@@ -1,0 +1,217 @@
+{
+  "name": "Nagar Drishti - 5-Day Unresponded SLA Escalation & Higher Authority Email Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule-daily",
+      "name": "Schedule (Daily 09:00 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sla-check-5days",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook-manual-trigger",
+      "name": "Webhook Trigger (On Demand)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 520],
+      "webhookId": "nagar-drishti-sla-check-5days"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NAGAR_DRISHTI_BACKEND_URL || 'http://localhost:5001' }}/api/admin/complaints/stagnant?days=5",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_shared_webhook_secret' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-fetch-stagnant",
+      "name": "Fetch 5-Day Stagnant Complaints",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [440, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract complaints list from backend response\nconst response = $input.first().json;\nconst complaints = response.data || [];\n\nif (!complaints.length) {\n  return [{\n    json: {\n      has_stagnant: false,\n      message: 'No complaints currently exceeding 5 days without response.',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nconst results = [];\nconst defaultHigherAuthority = 'admin@nagardrishti.gov.in'; // Chief Municipal Commissioner\nconst portalUrl = 'http://localhost:3000';\n\nfor (const comp of complaints) {\n  const publicNumber = comp.public_number || comp.id;\n  const title = comp.title || 'Untitled civic report';\n  const category = comp.category_name || 'General Municipal Issue';\n  const department = comp.department_name || 'Unassigned Municipal Dept';\n  const location = comp.location_text || 'Location not specified';\n  const daysStagnant = Number(comp.days_stagnant || 5);\n  const citizen = comp.reporter_name || 'Citizen';\n  const email = comp.reporter_email || 'N/A';\n  const phone = comp.reporter_phone || 'N/A';\n\n  const recipients = [defaultHigherAuthority];\n  if (comp.department_email && comp.department_email !== defaultHigherAuthority) {\n    recipients.push(comp.department_email);\n  }\n\n  const subject = `🚨 [URGENT ESCALATION] Unattended Civic Complaint #${publicNumber} Exceeded ${daysStagnant} Days Without Response`;\n\n  const html = `\n    <div style=\"font-family: -apple-system, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;\">\n      <div style=\"background: #0f172a; padding: 20px 24px; color: #fff;\">\n        <div style=\"font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8; font-weight: 700;\">🏛 NAGAR DRISHTI MUNICIPAL MONITORING</div>\n        <h2 style=\"margin: 6px 0 0; font-size: 18px;\">5-Day SLA Breach Escalation Notice</h2>\n      </div>\n      <div style=\"background: #fee2e2; border-left: 4px solid #ef4444; padding: 14px 20px; margin: 18px 24px;\">\n        <strong style=\"color: #991b1b;\">⚠️ Immediate Administrative Intervention Required</strong>\n        <p style=\"margin: 4px 0 0; color: #7f1d1d; font-size: 13px;\">\n          Civic complaint <strong>#${publicNumber}</strong> has remained unresponded for <strong>${daysStagnant} consecutive days</strong> without status change or resolution.\n        </p>\n      </div>\n      <div style=\"padding: 10px 24px 20px;\">\n        <table style=\"width: 100%; border-collapse: collapse; font-size: 13px;\">\n          <tr><td style=\"padding: 8px 0; color: #64748b; width: 35%;\">Tracking ID:</td><td><strong>#${publicNumber}</strong></td></tr>\n          <tr><td style=\"padding: 8px 0; color: #64748b;\">Issue:</td><td><strong>${title}</strong></td></tr>\n          <tr><td style=\"padding: 8px 0; color: #64748b;\">Category:</td><td>${category}</td></tr>\n          <tr><td style=\"padding: 8px 0; color: #64748b;\">Designated Dept:</td><td><strong>${department}</strong></td></tr>\n          <tr><td style=\"padding: 8px 0; color: #64748b;\">Location:</td><td>${location}</td></tr>\n          <tr><td style=\"padding: 8px 0; color: #64748b;\">Citizen Reporter:</td><td>${citizen} (${email} · ${phone})</td></tr>\n          <tr><td style=\"padding: 8px 0; color: #64748b;\">Days Unattended:</td><td><span style=\"background:#ef4444;color:#fff;padding:2px 8px;border-radius:4px;font-weight:700;\">${daysStagnant} Days</span></td></tr>\n        </table>\n        <div style=\"text-align: center; margin: 24px 0 10px;\">\n          <a href=\"${portalUrl}\" style=\"background: #059669; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 13px; display: inline-block;\">\n            Open Admin Portal to Resolve ›\n          </a>\n        </div>\n      </div>\n      <div style=\"background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 24px; font-size: 11px; color: #64748b;\">\n        Escalated autonomously by Nagar Drishti Workflow C. All events logged into municipal compliance ledger.\n      </div>\n    </div>\n  `;\n\n  results.push({\n    json: {\n      has_stagnant: true,\n      complaint_id: comp.id,\n      public_number: publicNumber,\n      title,\n      category,\n      department,\n      days_stagnant: daysStagnant,\n      higher_authority_emails: recipients,\n      email_subject: subject,\n      email_html: html,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "node-filter-format-escalation",
+      "name": "Evaluate & Format Escalation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "fromEmail": "escalations@nagardrishti.gov.in",
+        "toEmail": "={{ $json.higher_authority_emails.join(', ') }}",
+        "subject": "={{ $json.email_subject }}",
+        "html": "={{ $json.email_html }}",
+        "options": {
+          "priority": "high"
+        }
+      },
+      "id": "node-send-email",
+      "name": "Send Email to Higher Authorities",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [920, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NAGAR_DRISHTI_BACKEND_URL || 'http://localhost:5001' }}/api/webhooks/n8n/escalate-unresponded",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_shared_webhook_secret' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "complaint_id",
+              "value": "={{ $json.complaint_id }}"
+            },
+            {
+              "name": "days_unresponded",
+              "value": "={{ $json.days_stagnant }}"
+            },
+            {
+              "name": "reason",
+              "value": "Exceeded 5 days without response from assigned department. Escalated to Higher Authorities via n8n Workflow C."
+            },
+            {
+              "name": "send_email",
+              "value": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-confirm-escalation",
+      "name": "Confirm Escalation in Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1160, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  message: '5-Day unresponded escalation processed. Alert emails dispatched to Higher Authorities.',\n  escalated_count: $items().length,\n  escalations: $items().map(i => ({\n    complaint_id: i.json.complaint_id,\n    public_number: i.json.public_number,\n    days_stagnant: i.json.days_stagnant,\n    recipients: i.json.higher_authority_emails\n  }))\n}) }}",
+        "options": {}
+      },
+      "id": "node-respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1400, 420]
+    }
+  ],
+  "connections": {
+    "Schedule (Daily 09:00 AM)": {
+      "main": [
+        [
+          {
+            "node": "Fetch 5-Day Stagnant Complaints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger (On Demand)": {
+      "main": [
+        [
+          {
+            "node": "Fetch 5-Day Stagnant Complaints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch 5-Day Stagnant Complaints": {
+      "main": [
+        [
+          {
+            "node": "Evaluate & Format Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate & Format Escalation": {
+      "main": [
+        [
+          {
+            "node": "Send Email to Higher Authorities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email to Higher Authorities": {
+      "main": [
+        [
+          {
+            "node": "Confirm Escalation in Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Escalation in Backend": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

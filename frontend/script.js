@@ -127,7 +127,9 @@ function normalizeComplaint(item) {
         priority: String(item.priority || 'medium').replace(/^./, character => character.toUpperCase()),
         citizen: item.reporter_name || current?.name || 'Citizen',
         email: item.reporter_email || current?.email || '',
-        status: item.status || 'Pending'
+        status: item.status || 'Pending',
+        is_escalated: Boolean(item.is_escalated),
+        escalation_reason: item.escalation_reason || ''
     };
 }
 
@@ -491,9 +493,13 @@ function table(rows) {
             ? `<span style="font-weight:600;font-size:11px;color:var(--ink)">${esc(complaint.department_name)}</span>`
             : `<span class="cluster-badge high" style="font-size:10px">⚡ Unassigned</span>`;
 
+        const escalationBadge = complaint.is_escalated
+            ? `<div style="margin-top:3px"><span class="cluster-badge urgent" style="font-size:9px" title="${esc(complaint.escalation_reason || 'Escalated to Higher Authorities')}">🚨 Escalated to Higher Authorities</span></div>`
+            : '';
+
         return `<tr>
             <td><b>#${esc(complaint.id)}</b></td>
-            <td>${esc(complaint.title)}</td>
+            <td><b>${esc(complaint.title)}</b>${escalationBadge}</td>
             <td><span class="pill" style="font-size:11px">${esc(complaint.category)}</span></td>
             <td>${esc(complaint.location)}</td>
             ${current && current.role === 'admin' ? `<td>${crowdBadge}</td><td>${deptDisplay}</td><td><span class="status ${statusClass(complaint.crowdPriority || complaint.priority)}">${esc(complaint.crowdPriority || complaint.priority)}</span></td>` : ''}
@@ -502,6 +508,7 @@ function table(rows) {
             <td>${actions}</td>
         </tr>`;
     }).join('')}</tbody></table></div>`;
+
 }
 
 
@@ -658,11 +665,13 @@ function adminComplaintsPage() {
     const enriched = enrichComplaintsWithClusters(complaints.filter(matches));
     const hotspots = enriched.filter(c => (c.clusterCount || 1) >= 2);
     const urgent = enriched.filter(c => c.crowdPriority === 'Urgent' || c.priority === 'Urgent');
+    const escalated = enriched.filter(c => c.is_escalated);
     const pending = enriched.filter(c => c.status === 'Pending');
 
     let displayed = enriched;
     if (complaintTableFilter === 'hotspots') displayed = hotspots;
     else if (complaintTableFilter === 'urgent') displayed = urgent;
+    else if (complaintTableFilter === 'escalated') displayed = escalated;
     else if (complaintTableFilter === 'pending') displayed = pending;
 
     return `
@@ -672,6 +681,7 @@ function adminComplaintsPage() {
             <p>Review civic reports, AI-assigned departments, and crowd-prioritized duplicates.</p>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="btn" id="run5DayEscalationBtn" style="font-size:11px;padding:6px 14px;background:#b91c1c;color:#fff">🚨 5-Day SLA Check & Alert Higher Authorities</button>
             <button type="button" class="btn" id="runAiAutoAssignBtn" style="font-size:11px;padding:6px 14px">🤖 n8n AI Auto-Assign Departments</button>
             <span class="pill">${complaints.length} total reports</span>
         </div>
@@ -681,6 +691,7 @@ function adminComplaintsPage() {
         <div class="table-filter-bar">
             <button type="button" class="table-filter-btn ${complaintTableFilter === 'all' ? 'active' : ''}" data-table-filter="all">All (${complaints.length})</button>
             <button type="button" class="table-filter-btn ${complaintTableFilter === 'hotspots' ? 'active' : ''}" data-table-filter="hotspots">🔥 Hotspots & Duplicates (${hotspots.length})</button>
+            <button type="button" class="table-filter-btn ${complaintTableFilter === 'escalated' ? 'active' : ''}" data-table-filter="escalated">🚨 5-Day Escalated (${escalated.length})</button>
             <button type="button" class="table-filter-btn ${complaintTableFilter === 'urgent' ? 'active' : ''}" data-table-filter="urgent">⚡ Urgent (${urgent.length})</button>
             <button type="button" class="table-filter-btn ${complaintTableFilter === 'pending' ? 'active' : ''}" data-table-filter="pending">◷ Pending (${pending.length})</button>
         </div>
@@ -1191,6 +1202,31 @@ function bindContent() {
             }
         };
     }
+
+    // 7. 5-Day SLA Breach Escalation & Higher Authority Email Dispatch
+    const run5DayBtn = document.getElementById('run5DayEscalationBtn');
+    if (run5DayBtn) {
+        run5DayBtn.onclick = async () => {
+            run5DayBtn.disabled = true;
+            run5DayBtn.textContent = '🚨 Checking 5-day stagnant issues…';
+            try {
+                const res = await apiRequest('/webhooks/n8n/escalate-unresponded', {
+                    method: 'POST',
+                    body: { days_unresponded: 5, send_email: true }
+                });
+                notify(res.message || '5-Day SLA check complete. Alert emails dispatched to Higher Authorities!');
+                await render({ refresh: true });
+            } catch (error) {
+                notify(`Escalation check error: ${error.message}`);
+            } finally {
+                if (run5DayBtn) {
+                    run5DayBtn.disabled = false;
+                    run5DayBtn.textContent = '🚨 5-Day SLA Check & Alert Higher Authorities';
+                }
+            }
+        };
+    }
+
 
     const exportButton = document.getElementById('exportBtn');
     if (exportButton) {

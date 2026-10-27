@@ -5,7 +5,9 @@ import {
   verifyResolution,
   escalateComplaint,
   assignCluster,
-  resolveCluster
+  resolveCluster,
+  getStagnantComplaints,
+  escalateStagnantComplaint
 } from '../services/adminService.js';
 
 /**
@@ -212,4 +214,50 @@ export const batchResolve = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @route   GET /api/admin/complaints/stagnant
+ * @desc    Get all complaints that have passed 5+ days without response
+ * @access  Private (Admin)
+ */
+export const listStagnant = async (req, res, next) => {
+  try {
+    const days = parseInt(req.query.days || '5', 10);
+    const complaints = await getStagnantComplaints({ daysThreshold: days });
+    res.status(200).json({
+      success: true,
+      count: complaints.length,
+      data: complaints
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   POST /api/admin/complaints/:id/escalate-5days
+ * @desc    Escalate a 5-day unresponded complaint and send email to higher authorities
+ * @access  Private (Admin)
+ */
+export const escalate5Days = async (req, res, next) => {
+  try {
+    const { days, reason, send_email } = req.body || {};
+    const result = await escalateStagnantComplaint({
+      complaintId: req.params.id,
+      daysUnresponded: days || 5,
+      reason,
+      sendEmail: send_email !== false,
+      adminUser: req.user
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Complaint escalated to Higher Authorities and email alert sent.',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
