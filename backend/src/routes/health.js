@@ -1,5 +1,6 @@
 import express from 'express';
 import { env } from '../config/env.js';
+import { testConnection } from '../config/db.js';
 
 const router = express.Router();
 
@@ -8,8 +9,9 @@ const router = express.Router();
  * @desc    Health check endpoint for Render and uptime monitoring
  * @access  Public
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const memory = process.memoryUsage();
+  const dbStatus = await testConnection();
   
   res.status(200).json({
     status: 'healthy',
@@ -18,6 +20,10 @@ router.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
     environment: env.NODE_ENV,
+    database: {
+      connected: dbStatus.connected,
+      message: dbStatus.message
+    },
     memory: {
       rssMB: Math.round(memory.rss / 1024 / 1024),
       heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
