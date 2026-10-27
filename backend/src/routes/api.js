@@ -2,6 +2,7 @@ import express from 'express';
 import healthRouter from './health.js';
 import authRouter from './auth.js';
 import complaintsRouter from './complaints.js';
+import adminRouter from './admin.js';
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.get('/', (req, res) => {
       health: '/api/health',
       auth: '/api/auth',
       complaints: '/api/complaints',
-      admin: '/api/admin (planned)',
+      admin: '/api/admin',
       dashboard: '/api/dashboard (planned)',
       notifications: '/api/notifications (planned)',
       ai: '/api/ai (planned)',
@@ -33,5 +34,8 @@ router.use('/auth', authRouter);
 
 // Citizen Complaint routes
 router.use('/complaints', complaintsRouter);
+
+// Admin Operations routes
+router.use('/admin', adminRouter);
 
 export default router;

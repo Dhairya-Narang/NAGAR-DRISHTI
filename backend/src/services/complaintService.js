@@ -517,10 +517,15 @@ export const updateComplaintStatus = async ({
 
     const oldStatus = complaint.status;
     complaint.status = newStatus;
+    if (verificationStatus) {
+      complaint.verification_status = verificationStatus;
+    }
     if (newStatus === 'Resolved') {
       complaint.resolved_at = new Date().toISOString();
       complaint.resolution_notes = notes || 'Resolved by city operations';
-      complaint.verification_status = verificationStatus || 'pending_verification';
+      if (!verificationStatus) {
+        complaint.verification_status = 'pending_verification';
+      }
     }
     complaint.updated_at = new Date().toISOString();
 
