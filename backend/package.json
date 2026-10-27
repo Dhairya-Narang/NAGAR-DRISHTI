@@ -10,6 +10,9 @@
     "test": "NODE_ENV=test node --test",
     "seed": "node src/scripts/seed.js"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "keywords": [
     "nagar-drishti",
     "smart-city",
