@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://nagar-drishti-backend.onrender.com/api/:path*"
+      "destination": "https://nagar-drishti-backend-9odx.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",

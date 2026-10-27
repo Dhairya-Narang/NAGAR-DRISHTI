@@ -26,7 +26,7 @@
   if (isLocal) {
     defaultUrl = 'http://localhost:5001/api';
   } else if (isRenderStatic) {
-    defaultUrl = 'https://nagar-drishti-backend.onrender.com/api';
+    defaultUrl = 'https://nagar-drishti-backend-9odx.onrender.com/api';
   }
 
   window.NAGAR_DRISHTI_API_URL = window.NAGAR_DRISHTI_API_URL || paramUrl || storedUrl || defaultUrl;
