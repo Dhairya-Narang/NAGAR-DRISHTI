@@ -1,6 +1,7 @@
 import express from 'express';
 import healthRouter from './health.js';
 import authRouter from './auth.js';
+import complaintsRouter from './complaints.js';
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ router.get('/', (req, res) => {
     endpoints: {
       health: '/api/health',
       auth: '/api/auth',
-      complaints: '/api/complaints (planned)',
+      complaints: '/api/complaints',
       admin: '/api/admin (planned)',
       dashboard: '/api/dashboard (planned)',
       notifications: '/api/notifications (planned)',
@@ -29,5 +30,8 @@ router.use('/health', healthRouter);
 
 // Authentication & Profile routes
 router.use('/auth', authRouter);
+
+// Citizen Complaint routes
+router.use('/complaints', complaintsRouter);
 
 export default router;
