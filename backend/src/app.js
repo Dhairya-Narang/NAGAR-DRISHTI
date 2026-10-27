@@ -3,13 +3,23 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 import { env } from './config/env.js';
 import apiRouter from './routes/api.js';
 import healthRouter from './routes/health.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendDir = path.resolve(__dirname, '../../frontend');
+
 const app = express();
+
+// Serve static frontend web portal
+app.use('/portal', express.static(frontendDir));
 
 // Security middleware
 app.use(helmet());
