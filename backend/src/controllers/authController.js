@@ -2,7 +2,8 @@ import {
   registerCitizen,
   registerAdmin,
   loginUser,
-  getUserById
+  getUserById,
+  updateProfile
 } from '../services/authService.js';
 
 /**
@@ -154,3 +155,33 @@ export const getMe = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @route   PUT /api/auth/profile
+ * @desc    Update current user profile
+ * @access  Private (Authenticated)
+ */
+export const updateMe = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { name, phone, address, ward, city, pincode, preferred_language, designation } = req.body;
+    const updated = await updateProfile(userId, {
+      name,
+      phone,
+      address,
+      ward,
+      city,
+      pincode,
+      preferred_language,
+      designation
+    });
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully.',
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

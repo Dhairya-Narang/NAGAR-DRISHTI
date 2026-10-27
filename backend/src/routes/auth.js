@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, logout, getMe } from '../controllers/authController.js';
+import { register, login, logout, getMe, updateMe } from '../controllers/authController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -31,5 +31,12 @@ router.post('/logout', logout);
  * @access  Private
  */
 router.get('/me', authenticateToken, getMe);
+
+/**
+ * @route   PUT /api/auth/profile
+ * @desc    Update user profile and details
+ * @access  Private
+ */
+router.put('/profile', authenticateToken, updateMe);
 
 export default router;

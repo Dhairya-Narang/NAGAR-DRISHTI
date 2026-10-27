@@ -442,3 +442,105 @@ export const getUserById = async (userId) => {
   if (!user) return null;
   return { user, profile };
 };
+
+/**
+ * Update user and Option A profile details
+ */
+export const updateProfile = async (userId, {
+  name,
+  phone,
+  address,
+  ward,
+  city,
+  pincode,
+  preferred_language,
+  designation
+}) => {
+  if (pool) {
+    // 1. Update user record
+    const userUpdates = [];
+    const userParams = [userId];
+    let pIdx = 2;
+    if (name) {
+      userUpdates.push(`name = $${pIdx++}`);
+      userParams.push(name.trim());
+    }
+    if (phone !== undefined) {
+      userUpdates.push(`phone = $${pIdx++}`);
+      userParams.push(phone ? phone.trim() : null);
+    }
+    if (userUpdates.length > 0) {
+      userUpdates.push('updated_at = CURRENT_TIMESTAMP');
+      await query(`UPDATE users SET ${userUpdates.join(', ')} WHERE id = $1`, userParams);
+    }
+
+    const userRes = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (userRes.rows.length === 0) throw new Error('User not found');
+    const role = userRes.rows[0].role;
+
+    // 2. Update specialized profile record
+    if (role === 'citizen') {
+      const profUpdates = [];
+      const profParams = [userId];
+      let profIdx = 2;
+      if (address !== undefined) { profUpdates.push(`address = $${profIdx++}`); profParams.push(address ? address.trim() : null); }
+      if (ward !== undefined) { profUpdates.push(`ward = $${profIdx++}`); profParams.push(ward ? ward.trim() : null); }
+      if (city !== undefined) { profUpdates.push(`city = $${profIdx++}`); profParams.push(city ? city.trim() : 'Delhi-NCR'); }
+      if (pincode !== undefined) { profUpdates.push(`pincode = $${profIdx++}`); profParams.push(pincode ? pincode.trim() : null); }
+      if (preferred_language !== undefined) { profUpdates.push(`preferred_language = $${profIdx++}`); profParams.push(preferred_language || 'en'); }
+
+      if (profUpdates.length > 0) {
+        profUpdates.push('updated_at = CURRENT_TIMESTAMP');
+        await query(`UPDATE citizen_profiles SET ${profUpdates.join(', ')} WHERE user_id = $1`, profParams);
+      }
+    } else if (role === 'admin') {
+      if (designation !== undefined) {
+        await query('UPDATE admin_profiles SET designation = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1', [userId, designation.trim()]);
+      }
+    }
+
+    // Sync name to Supabase Auth metadata
+    if (supabase && name && env.NODE_ENV !== 'test') {
+      try {
+        await supabase.auth.admin.updateUserById(userId, {
+          user_metadata: { name: name.trim(), role }
+        });
+      } catch (authErr) {
+        console.warn('Supabase auth metadata update notice:', authErr.message);
+      }
+    }
+
+    return await getUserById(userId);
+  } else {
+    // In-memory fallback
+    let user = null;
+    for (const u of mockUsers.values()) {
+      if (u.id === userId) {
+        user = u;
+        break;
+      }
+    }
+    if (!user) throw new Error('User not found');
+    if (name) user.name = name.trim();
+    if (phone !== undefined) user.phone = phone;
+
+    let profile = null;
+    if (user.role === 'citizen') {
+      profile = mockCitizenProfiles.get(userId) || {};
+      if (address !== undefined) profile.address = address;
+      if (ward !== undefined) profile.ward = ward;
+      if (city !== undefined) profile.city = city;
+      if (pincode !== undefined) profile.pincode = pincode;
+      if (preferred_language !== undefined) profile.preferred_language = preferred_language;
+      mockCitizenProfiles.set(userId, profile);
+    } else if (user.role === 'admin') {
+      profile = mockAdminProfiles.get(userId) || {};
+      if (designation !== undefined) profile.designation = designation;
+      mockAdminProfiles.set(userId, profile);
+    }
+
+    const { password_hash, ...safeUser } = user;
+    return { user: safeUser, profile };
+  }
+};
+
