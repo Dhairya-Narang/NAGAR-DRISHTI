@@ -4,6 +4,7 @@
 # ==========================================================
 
 services:
+  # 1. Backend REST API
   - type: web
     name: nagar-drishti-backend
     runtime: node
@@ -39,3 +40,33 @@ services:
         generateValue: true
       - key: UPLOAD_MAX_SIZE_MB
         value: 10
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: escalations@nagardrishti.gov.in
+      - key: HIGHER_AUTHORITY_EMAIL
+        value: admin@nagardrishti.gov.in
+
+  # 2. Frontend Web Application (Static Site)
+  - type: web
+    name: nagar-drishti-frontend
+    runtime: static
+    plan: free
+    region: singapore
+    rootDir: frontend
+    buildCommand: ""
+    staticPublishPath: ./
+    headers:
+      - path: /*
+        name: Access-Control-Allow-Origin
+        value: "*"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
