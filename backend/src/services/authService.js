@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { query, pool } from '../config/db.js';
+import { query, pool, supabase } from '../config/db.js';
 import { env } from '../config/env.js';
 
 // In-memory user store fallback for testing/dev environments without a live PostgreSQL database
@@ -155,6 +155,22 @@ export const registerCitizen = async ({
     );
     const user = userRes.rows[0];
 
+    // Sync to Supabase Auth (auth.users) so user appears in Supabase Authentication Dashboard
+    if (supabase && env.NODE_ENV !== 'test') {
+      try {
+        await supabase.auth.admin.createUser({
+          id: user.id,
+          email: user.email,
+          password: password,
+          email_confirm: true,
+          user_metadata: { name: user.name, role: user.role }
+        });
+      } catch (authErr) {
+        // Non-blocking if already in Auth or network warning
+        console.warn('Supabase Auth sync notice:', authErr.message);
+      }
+    }
+
     // Insert citizen profile (Option A)
     const profileRes = await query(
       `INSERT INTO citizen_profiles (user_id, address, ward, city, pincode, preferred_language)
@@ -237,6 +253,21 @@ export const registerAdmin = async ({
       [name.trim(), normalizedEmail, passwordHash, phone]
     );
     const user = userRes.rows[0];
+
+    // Sync to Supabase Auth (auth.users) so admin appears in Supabase Authentication Dashboard
+    if (supabase && env.NODE_ENV !== 'test') {
+      try {
+        await supabase.auth.admin.createUser({
+          id: user.id,
+          email: user.email,
+          password: password,
+          email_confirm: true,
+          user_metadata: { name: user.name, role: user.role }
+        });
+      } catch (authErr) {
+        console.warn('Supabase Auth sync notice:', authErr.message);
+      }
+    }
 
     const profileRes = await query(
       `INSERT INTO admin_profiles (user_id, department_id, employee_id, designation, is_superadmin, permissions)
