@@ -70,10 +70,21 @@ export const createComplaint = async ({
   const dueAt = calculateDueAt(priority);
 
   if (pool) {
-    // If department_id not specified, check if category has a default department
+    // If department_id not specified, check if category has a default department or auto-classify
     let assignedDeptId = department_id;
-    if (!assignedDeptId && category_id) {
-      const catRes = await query('SELECT default_department_id FROM categories WHERE id = $1', [category_id]);
+    let resolvedCatId = category_id;
+    if (!resolvedCatId) {
+      const combined = `${title} ${description} ${location_text}`.toLowerCase();
+      if (/pothole|crater|asphalt|paver|sinkhole|road damage|broken road/i.test(combined)) resolvedCatId = 'c1111111-1111-1111-1111-111111111111';
+      else if (/garbage|waste|trash|dumpster|litter|sanitation/i.test(combined)) resolvedCatId = 'c2222222-2222-2222-2222-222222222222';
+      else if (/water|pipeline|burst|leak|water supply/i.test(combined)) resolvedCatId = 'c3333333-3333-3333-3333-333333333333';
+      else if (/streetlight|street light|dark street|lamp post|flickering/i.test(combined)) resolvedCatId = 'c4444444-4444-4444-4444-444444444444';
+      else if (/sewage|drain|manhole|sewer|dirty water/i.test(combined)) resolvedCatId = 'c5555555-5555-5555-5555-555555555555';
+      else if (/tree|branch|park|greenery|pruning/i.test(combined)) resolvedCatId = 'c6666666-6666-6666-6666-666666666666';
+    }
+
+    if (!assignedDeptId && resolvedCatId) {
+      const catRes = await query('SELECT default_department_id FROM categories WHERE id = $1', [resolvedCatId]);
       if (catRes.rows.length > 0) {
         assignedDeptId = catRes.rows[0].default_department_id;
       }
@@ -88,7 +99,7 @@ export const createComplaint = async ({
       RETURNING *`,
       [
         publicNumber, userId, title.trim(), description.trim(),
-        category_id, assignedDeptId, location_text.trim(), landmark, ward,
+        resolvedCatId || category_id, assignedDeptId, location_text.trim(), landmark, ward,
         latitude, longitude, priority.toLowerCase(), dueAt
       ]
     );

@@ -28,6 +28,7 @@ let notifications = [];
 let aiSuggestions = [];
 let loadedPage = '';
 let renderSequence = 0;
+let complaintTableFilter = 'all';
 
 function applyTheme(newTheme) {
     theme = newTheme;
@@ -116,7 +117,10 @@ function normalizeComplaint(item) {
         id: item.public_number || item.id,
         title: item.title || 'Untitled report',
         category: item.category_name || category?.name || 'Other',
+        department_id: item.department_id || null,
+        department_name: item.department_name || '',
         location: item.location_text || '',
+        landmark: item.landmark || '',
         date: item.created_at
             ? new Date(item.created_at).toLocaleDateString('en-IN', { month: 'short', day: '2-digit', year: 'numeric' })
             : '',
@@ -126,6 +130,131 @@ function normalizeComplaint(item) {
         status: item.status || 'Pending'
     };
 }
+
+// DUPLICATE DETECTION & PRIORITY SCALING ALGORITHM
+const CIVIC_STOPWORDS = new Set([
+    'road', 'street', 'lane', 'avenue', 'block', 'near', 'opposite', 'opp', 'junction',
+    'behind', 'outside', 'front', 'corner', 'sector', 'gate', 'area', 'colony', 'marg',
+    'the', 'and', 'with', 'for', 'from', 'pothole', 'crater', 'broken', 'damage', 'hazardous',
+    'deep', 'severe', 'urgent', 'massive', 'huge', 'delhi', 'ncr'
+]);
+
+function extractLocationTokens(text) {
+    if (!text) return [];
+    return text.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && !CIVIC_STOPWORDS.has(w));
+}
+
+function areComplaintsSimilar(a, b) {
+    // 1. Explicit duplicate / parent incident link
+    if (a.parent_incident_id && (a.parent_incident_id === b.id || a.parent_incident_id === b.backendId)) return true;
+    if (b.parent_incident_id && (b.parent_incident_id === a.id || b.parent_incident_id === a.backendId)) return true;
+
+    // 2. Both should share category (or one of them is unassigned/other)
+    const sameCat = (a.category === b.category) || (a.category_id && a.category_id === b.category_id) || (a.category === 'Other' || b.category === 'Other');
+    if (!sameCat) return false;
+
+    // 3. Location text similarity: check shared significant landmark/location tokens
+    const aLocTokens = extractLocationTokens(`${a.location || ''} ${a.landmark || ''}`);
+    const bLocTokens = extractLocationTokens(`${b.location || ''} ${b.landmark || ''}`);
+    const sharedLoc = aLocTokens.filter(t => bLocTokens.includes(t));
+    if (sharedLoc.length >= 1) return true;
+
+    return false;
+}
+
+function getClusteredIncidents(complaintsList) {
+    const visited = new Set();
+    const clusters = [];
+
+    for (let i = 0; i < complaintsList.length; i++) {
+        const c = complaintsList[i];
+        const cId = c.backendId || c.id;
+        if (visited.has(cId)) continue;
+
+        const group = [c];
+        visited.add(cId);
+
+        for (let j = i + 1; j < complaintsList.length; j++) {
+            const other = complaintsList[j];
+            const otherId = other.backendId || other.id;
+            if (visited.has(otherId)) continue;
+
+            if (areComplaintsSimilar(c, other)) {
+                group.push(other);
+                visited.add(otherId);
+            }
+        }
+
+        // Priority scaling: More reports on same issue = Higher Priority
+        const count = group.length;
+        let crowdPriority = 'Low';
+        let weight = 1;
+
+        if (count >= 3) {
+            crowdPriority = 'Urgent';
+            weight = 40 + count; // Hotspot escalation
+        } else if (count === 2) {
+            crowdPriority = 'High';
+            weight = 20 + count; // Duplicate cluster escalation
+        } else {
+            const basePri = String(c.priority || 'Medium').toLowerCase();
+            if (basePri === 'urgent') weight = 15;
+            else if (basePri === 'high') weight = 10;
+            else if (basePri === 'medium') weight = 5;
+            else weight = 1;
+            crowdPriority = String(c.priority || 'Medium').replace(/^./, ch => ch.toUpperCase());
+        }
+
+        clusters.push({
+            id: `cluster-${group[0].backendId || group[0].id}`,
+            primary: group[0],
+            reports: group,
+            count,
+            crowdPriority,
+            weight,
+            isHotspot: count >= 3,
+            isDuplicate: count === 2,
+            category: group[0].category,
+            departmentName: group.find(r => r.department_name)?.department_name || '',
+            location: group[0].location || group[0].landmark || 'Location pending'
+        });
+    }
+
+    // Sort priority-wise: highest weight / report count first
+    clusters.sort((a, b) => b.weight - a.weight);
+    return clusters;
+}
+
+function enrichComplaintsWithClusters(complaintsList) {
+    const clusters = getClusteredIncidents(complaintsList);
+    const complaintMap = new Map();
+
+    clusters.forEach(cluster => {
+        cluster.reports.forEach(comp => {
+            const id = comp.backendId || comp.id;
+            complaintMap.set(id, {
+                clusterCount: cluster.count,
+                crowdPriority: cluster.crowdPriority,
+                clusterWeight: cluster.weight,
+                clusterId: cluster.id,
+                isClusterPrimary: (comp.backendId || comp.id) === (cluster.primary.backendId || cluster.primary.id)
+            });
+        });
+    });
+
+    return complaintsList.map(comp => {
+        const id = comp.backendId || comp.id;
+        const meta = complaintMap.get(id) || { clusterCount: 1, crowdPriority: comp.priority, clusterWeight: 1 };
+        return {
+            ...comp,
+            ...meta
+        };
+    });
+}
+
 
 async function loadPageData(requestedPage) {
     if (requestedPage === 'Profile') {
@@ -323,20 +452,58 @@ function matches(complaint) {
 
 function table(rows) {
     if (!rows.length) return '<div class="empty">No complaints found.</div>';
-    return `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Issue</th><th>Category</th><th>Location</th><th>Status</th><th>Date</th>${current.role === 'admin' ? '<th>Priority</th>' : ''}<th>Action</th></tr></thead><tbody>${rows.map(complaint => {
+
+    let displayRows = [...rows];
+    if (current && current.role === 'admin') {
+        displayRows = enrichComplaintsWithClusters(displayRows);
+        // Sort priority-wise: higher cluster weight first (more reports on same issue = higher priority)
+        displayRows.sort((a, b) => (b.clusterWeight || 0) - (a.clusterWeight || 0));
+    }
+
+    return `<div class="table-wrap"><table><thead><tr>
+        <th>ID</th>
+        <th>Issue</th>
+        <th>Category</th>
+        <th>Location</th>
+        ${current && current.role === 'admin' ? '<th>Crowd Reports</th><th>Department</th><th>Priority</th>' : ''}
+        <th>Status</th>
+        <th>Date</th>
+        <th>Action</th>
+    </tr></thead><tbody>${displayRows.map(complaint => {
         const id = esc(complaint.backendId || complaint.id);
         let actions = '—';
-        if (current.role === 'admin' && complaint.verification_status === 'pending_verification') {
+        if (current && current.role === 'admin' && complaint.verification_status === 'pending_verification') {
             actions = `<button class="text-link" data-verify="${id}">Verify</button> <button class="text-link" data-reject="${id}">Reject</button>`;
-        } else if (current.role === 'admin' && complaint.status !== 'Resolved') {
-            const options = departments.map(department => `<option value="${esc(department.id)}">${esc(department.name)}</option>`).join('');
+        } else if (current && current.role === 'admin' && complaint.status !== 'Resolved') {
+            const options = departments.map(department => `<option value="${esc(department.id)}" ${complaint.department_id === department.id ? 'selected' : ''}>${esc(department.name)}</option>`).join('');
             actions = `${departments.length ? `<select data-assign="${id}" aria-label="Assign department"><option value="">Assign department</option>${options}</select>` : ''}<button class="text-link" data-resolve="${id}">Resolve</button>`;
-        } else if (current.role === 'citizen' && complaint.status === 'Resolved') {
+        } else if (current && current.role === 'citizen' && complaint.status === 'Resolved') {
             actions = `<button class="text-link" data-reopen="${id}">Request reopen</button>`;
         }
-        return `<tr><td><b>#${esc(complaint.id)}</b></td><td>${esc(complaint.title)}</td><td>${esc(complaint.category)}</td><td>${esc(complaint.location)}</td><td><span class="status ${statusClass(complaint.status)}">${esc(complaint.status)}</span></td><td>${esc(complaint.date)}</td>${current.role === 'admin' ? `<td>${esc(complaint.priority)}</td>` : ''}<td>${actions}</td></tr>`;
+
+        const crowdBadge = (complaint.clusterCount || 1) >= 3
+            ? `<span class="cluster-badge urgent">🔥 ${complaint.clusterCount} Reports (Hotspot)</span>`
+            : ((complaint.clusterCount || 1) === 2
+                ? `<span class="cluster-badge high">⚠️ 2 Reports</span>`
+                : `<span class="cluster-badge single">1 Report</span>`);
+
+        const deptDisplay = complaint.department_name
+            ? `<span style="font-weight:600;font-size:11px;color:var(--ink)">${esc(complaint.department_name)}</span>`
+            : `<span class="cluster-badge high" style="font-size:10px">⚡ Unassigned</span>`;
+
+        return `<tr>
+            <td><b>#${esc(complaint.id)}</b></td>
+            <td>${esc(complaint.title)}</td>
+            <td><span class="pill" style="font-size:11px">${esc(complaint.category)}</span></td>
+            <td>${esc(complaint.location)}</td>
+            ${current && current.role === 'admin' ? `<td>${crowdBadge}</td><td>${deptDisplay}</td><td><span class="status ${statusClass(complaint.crowdPriority || complaint.priority)}">${esc(complaint.crowdPriority || complaint.priority)}</span></td>` : ''}
+            <td><span class="status ${statusClass(complaint.status)}">${esc(complaint.status)}</span></td>
+            <td>${esc(complaint.date)}</td>
+            <td>${actions}</td>
+        </tr>`;
     }).join('')}</tbody></table></div>`;
 }
+
 
 function citizenHome() {
     const stats = dashboardSummary?.stats || {};
@@ -487,10 +654,139 @@ function profilePage() {
     `;
 }
 
+function adminComplaintsPage() {
+    const enriched = enrichComplaintsWithClusters(complaints.filter(matches));
+    const hotspots = enriched.filter(c => (c.clusterCount || 1) >= 2);
+    const urgent = enriched.filter(c => c.crowdPriority === 'Urgent' || c.priority === 'Urgent');
+    const pending = enriched.filter(c => c.status === 'Pending');
+
+    let displayed = enriched;
+    if (complaintTableFilter === 'hotspots') displayed = hotspots;
+    else if (complaintTableFilter === 'urgent') displayed = urgent;
+    else if (complaintTableFilter === 'pending') displayed = pending;
+
+    return `
+    <div class="page-heading">
+        <div>
+            <h1>Complaints Directory</h1>
+            <p>Review civic reports, AI-assigned departments, and crowd-prioritized duplicates.</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="btn" id="runAiAutoAssignBtn" style="font-size:11px;padding:6px 14px">🤖 n8n AI Auto-Assign Departments</button>
+            <span class="pill">${complaints.length} total reports</span>
+        </div>
+    </div>
+    <div class="card">
+        ${cardHead('All Complaints')}
+        <div class="table-filter-bar">
+            <button type="button" class="table-filter-btn ${complaintTableFilter === 'all' ? 'active' : ''}" data-table-filter="all">All (${complaints.length})</button>
+            <button type="button" class="table-filter-btn ${complaintTableFilter === 'hotspots' ? 'active' : ''}" data-table-filter="hotspots">🔥 Hotspots & Duplicates (${hotspots.length})</button>
+            <button type="button" class="table-filter-btn ${complaintTableFilter === 'urgent' ? 'active' : ''}" data-table-filter="urgent">⚡ Urgent (${urgent.length})</button>
+            <button type="button" class="table-filter-btn ${complaintTableFilter === 'pending' ? 'active' : ''}" data-table-filter="pending">◷ Pending (${pending.length})</button>
+        </div>
+        ${table(displayed)}
+    </div>`;
+}
+
+function incidentsPage() {
+    const filtered = complaints.filter(matches);
+    const clusters = getClusteredIncidents(filtered);
+    const hotspots = clusters.filter(c => c.isHotspot);
+    const duplicates = clusters.filter(c => c.isDuplicate);
+
+    return `
+    <div class="page-heading">
+        <div>
+            <h1>Civic Incidents & Hotspots</h1>
+            <p>Crowd-sourced duplicate detection & priority scaling: more reports on the same issue automatically escalate municipal priority.</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="btn" id="runAiAutoAssignBtn" style="font-size:11px;padding:6px 14px">🤖 n8n AI Auto-Assign Departments</button>
+            <span class="pill">${clusters.length} incident clusters</span>
+        </div>
+    </div>
+
+    <div class="stats">
+        ${stat('Active Incident Clusters', clusters.length, '⚠')}
+        ${stat('Urgent Hotspots (3+ reports)', hotspots.length, '🔥', 'amber')}
+        ${stat('High Duplicates (2 reports)', duplicates.length, '⚡', 'blue')}
+        ${stat('Total Sub-reports Tracked', complaints.length, '▤')}
+    </div>
+
+    ${clusters.length ? clusters.map(cluster => `
+        <div class="incident-card ${cluster.crowdPriority.toLowerCase()}">
+            <div class="incident-header">
+                <div class="incident-title-box">
+                    <span class="incident-icon">${cluster.count >= 3 ? '🔥' : (cluster.count === 2 ? '⚠️' : '▤')}</span>
+                    <div>
+                        <h3 style="margin:0 0 6px;font-size:16px;font-weight:700">${esc(cluster.primary.title)}</h3>
+                        <div class="incident-meta-badges">
+                            <span class="cluster-badge ${cluster.crowdPriority.toLowerCase()}">
+                                ${cluster.count >= 3 ? `🔥 Urgent Hotspot (${cluster.count} Citizen Reports)` : (cluster.count === 2 ? `⚠️ High Priority Duplicate (${cluster.count} Citizen Reports)` : '1 Single Report')}
+                            </span>
+                            <span class="status ${statusClass(cluster.crowdPriority)}">Escalated Priority: ${cluster.crowdPriority}</span>
+                            <span class="pill">📍 ${esc(cluster.location)}</span>
+                            <span class="pill">📁 ${esc(cluster.category)}</span>
+                            ${cluster.departmentName ? `<span class="pill" style="font-weight:700;color:var(--ink)">🏢 ${esc(cluster.departmentName)}</span>` : '<span class="cluster-badge high">⚡ Department Unassigned</span>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="incident-subreports">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tracking ID</th>
+                            <th>Citizen Reporter</th>
+                            <th>Report Title</th>
+                            <th>Reported Location</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${cluster.reports.map(r => `
+                            <tr>
+                                <td><b>#${esc(r.id)}</b></td>
+                                <td>${esc(r.citizen)}</td>
+                                <td>${esc(r.title)}</td>
+                                <td>${esc(r.location)}</td>
+                                <td><span class="status ${statusClass(r.status)}">${esc(r.status)}</span></td>
+                                <td>${esc(r.date)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="incident-actions-bar">
+                <div style="font-size:12px;color:var(--muted)">
+                    Cluster Operations (${cluster.count} linked reports):
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    ${departments.length ? `
+                        <select data-cluster-assign="${cluster.reports.map(r => r.backendId || r.id).join(',')}" style="font-size:11px;padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">
+                            <option value="">Batch Assign Department…</option>
+                            ${departments.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}
+                        </select>
+                    ` : ''}
+                    <button type="button" class="btn" data-cluster-resolve="${cluster.reports.map(r => r.backendId || r.id).join(',')}" style="font-size:11px;padding:6px 12px;background:#059669">
+                        ✓ Batch Resolve Cluster (${cluster.count})
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('') : '<div class="card"><div class="empty">No incidents found matching query.</div></div>'}
+    `;
+}
+
 function contentForPage() {
     if (page === 'Profile') return profilePage();
     if (current.role === 'admin') {
-        if (page === 'Complaints' || page === 'Incidents') return `<div class="page-heading"><div><h1>Complaints</h1><p>Review incoming reports and update their status.</p></div><span class="pill">${complaints.length} total reports</span></div><div class="card">${cardHead('All complaints')}${table(complaints.filter(matches))}</div>`;
+        if (page === 'Incidents') return incidentsPage();
+        if (page === 'Complaints') return adminComplaintsPage();
+
         if (page === 'Verification') {
             const queue = complaints.filter(complaint => complaint.verification_status === 'pending_verification');
             return `<div class="page-heading"><div><h1>Verification Queue</h1><p>Review resolutions before they are confirmed.</p></div></div><div class="card">${table(queue)}</div>`;
@@ -827,6 +1123,75 @@ function bindContent() {
             }
         };
     });
+
+    // 4. Incident Cluster & Hotspot Batch Actions
+    document.querySelectorAll('[data-cluster-assign]').forEach(select => {
+        select.onchange = async () => {
+            if (!select.value) return;
+            const ids = select.dataset.clusterAssign.split(',').map(s => s.trim()).filter(Boolean);
+            try {
+                await apiRequest('/admin/clusters/assign', {
+                    method: 'POST',
+                    body: { complaint_ids: ids, department_id: select.value }
+                });
+                notify(`Batch assigned ${ids.length} complaints to department!`);
+                await render({ refresh: true });
+            } catch (error) {
+                notify(error.message);
+            }
+        };
+    });
+
+    document.querySelectorAll('[data-cluster-resolve]').forEach(button => {
+        button.onclick = async () => {
+            const ids = button.dataset.clusterResolve.split(',').map(s => s.trim()).filter(Boolean);
+            const notes = prompt(`Enter resolution notes for all ${ids.length} linked complaints in this hotspot:`);
+            if (!notes?.trim()) return;
+            try {
+                await apiRequest('/admin/clusters/resolve', {
+                    method: 'POST',
+                    body: { complaint_ids: ids, resolution_notes: notes.trim() }
+                });
+                notify(`Batch resolved ${ids.length} complaints in incident cluster!`);
+                await render({ refresh: true });
+            } catch (error) {
+                notify(error.message);
+            }
+        };
+    });
+
+    // 5. Table Quick Filter Tabs
+    document.querySelectorAll('[data-table-filter]').forEach(button => {
+        button.onclick = async () => {
+            complaintTableFilter = button.dataset.tableFilter;
+            await render();
+        };
+    });
+
+    // 6. AI & n8n Autonomous Department Assignment Trigger
+    const aiAutoAssignBtn = document.getElementById('runAiAutoAssignBtn');
+    if (aiAutoAssignBtn) {
+        aiAutoAssignBtn.onclick = async () => {
+            aiAutoAssignBtn.disabled = true;
+            aiAutoAssignBtn.textContent = '🤖 Evaluating categories…';
+            try {
+                const res = await apiRequest('/admin/ai/auto-assign', {
+                    method: 'POST',
+                    body: {}
+                });
+                notify(`🤖 n8n AI assigned departments to ${res.count || 0} complaint(s)!`);
+                await render({ refresh: true });
+            } catch (error) {
+                notify(`AI Auto-Assign error: ${error.message}`);
+            } finally {
+                if (aiAutoAssignBtn) {
+                    aiAutoAssignBtn.disabled = false;
+                    aiAutoAssignBtn.textContent = '🤖 n8n AI Auto-Assign Departments';
+                }
+            }
+        };
+    }
+
     const exportButton = document.getElementById('exportBtn');
     if (exportButton) {
         exportButton.onclick = () => {

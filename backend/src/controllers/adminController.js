@@ -3,7 +3,9 @@ import {
   assignDepartment,
   resolveComplaint,
   verifyResolution,
-  escalateComplaint
+  escalateComplaint,
+  assignCluster,
+  resolveCluster
 } from '../services/adminService.js';
 
 /**
@@ -147,3 +149,67 @@ export const escalate = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @route   POST /api/admin/clusters/assign
+ * @desc    Batch assign all complaints in a duplicate incident cluster to a department
+ * @access  Private (Admin)
+ */
+export const batchAssign = async (req, res, next) => {
+  try {
+    const { complaint_ids, department_id, notes } = req.body;
+    if (!Array.isArray(complaint_ids) || complaint_ids.length === 0 || !department_id) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'complaint_ids array and department_id are required.', statusCode: 400 }
+      });
+    }
+
+    const updated = await assignCluster({
+      complaintIds: complaint_ids,
+      departmentId: department_id,
+      adminUser: req.user,
+      notes
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Assigned ${updated.length} complaints in incident cluster.`,
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   POST /api/admin/clusters/resolve
+ * @desc    Batch resolve all complaints in a duplicate incident cluster
+ * @access  Private (Admin)
+ */
+export const batchResolve = async (req, res, next) => {
+  try {
+    const { complaint_ids, resolution_notes } = req.body;
+    if (!Array.isArray(complaint_ids) || complaint_ids.length === 0 || !resolution_notes) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'complaint_ids array and resolution_notes are required.', statusCode: 400 }
+      });
+    }
+
+    const updated = await resolveCluster({
+      complaintIds: complaint_ids,
+      resolutionNotes: resolution_notes,
+      adminUser: req.user
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Resolved ${updated.length} complaints in incident cluster.`,
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

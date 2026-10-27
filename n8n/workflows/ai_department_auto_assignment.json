@@ -1,0 +1,142 @@
+{
+  "name": "Nagar Drishti - AI Department Auto-Assignment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "auto-assign-department",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "nagar-drishti-auto-assign-dept"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "node-schedule-trigger",
+      "name": "Schedule Trigger (10m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nagar Drishti Civic Category & Department Knowledge Matrix\nconst CATEGORY_MAP = {\n  'road-damage': {\n    catId: 'c1111111-1111-1111-1111-111111111111',\n    catName: 'Road Damage & Potholes',\n    deptId: 'd1111111-1111-1111-1111-111111111111',\n    deptName: 'Public Works Department (PWD)'\n  },\n  'garbage': {\n    catId: 'c2222222-2222-2222-2222-222222222222',\n    catName: 'Garbage & Waste Accumulation',\n    deptId: 'd2222222-2222-2222-2222-222222222222',\n    deptName: 'Solid Waste Management'\n  },\n  'water-leak': {\n    catId: 'c3333333-3333-3333-3333-333333333333',\n    catName: 'Water Pipeline Leakage / Burst',\n    deptId: 'd3333333-3333-3333-3333-333333333333',\n    deptName: 'Delhi Jal Board (Water & Sewage)'\n  },\n  'streetlights': {\n    catId: 'c4444444-4444-4444-4444-444444444444',\n    catName: 'Broken Streetlights',\n    deptId: 'd4444444-4444-4444-4444-444444444444',\n    deptName: 'Electricity & Power Distribution'\n  },\n  'sewage': {\n    catId: 'c5555555-5555-5555-5555-555555555555',\n    catName: 'Sewage Overflow & Blocked Drains',\n    deptId: 'd3333333-3333-3333-3333-333333333333',\n    deptName: 'Delhi Jal Board (Water & Sewage)'\n  },\n  'trees': {\n    catId: 'c6666666-6666-6666-6666-666666666666',\n    catName: 'Fallen Trees & Obstructions',\n    deptId: 'd5555555-5555-5555-5555-555555555555',\n    deptName: 'Horticulture & Public Parks'\n  }\n};\n\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const payload = item.json.body || item.json;\n  const title = String(payload.title || '').toLowerCase();\n  const desc = String(payload.description || '').toLowerCase();\n  const loc = String(payload.location_text || payload.location || '').toLowerCase();\n  const combined = `${title} ${desc} ${loc}`;\n\n  let matchedKey = null;\n  if (/pothole|crater|asphalt|paver|sinkhole|road damage|broken road/i.test(combined)) matchedKey = 'road-damage';\n  else if (/garbage|waste|trash|dumpster|litter|sanitation/i.test(combined)) matchedKey = 'garbage';\n  else if (/water|pipeline|burst|leak|water supply/i.test(combined)) matchedKey = 'water-leak';\n  else if (/streetlight|street light|dark street|lamp post|flickering|electric/i.test(combined)) matchedKey = 'streetlights';\n  else if (/sewage|drain|manhole|sewer|dirty water/i.test(combined)) matchedKey = 'sewage';\n  else if (/tree|branch|park|greenery|pruning/i.test(combined)) matchedKey = 'trees';\n\n  const matched = matchedKey ? CATEGORY_MAP[matchedKey] : null;\n\n  results.push({\n    json: {\n      complaint_id: payload.complaint_id || payload.id || null,\n      matched_category: matched ? matched.catName : 'Unknown',\n      category_id: matched ? matched.catId : null,\n      department_id: matched ? matched.deptId : null,\n      department_name: matched ? matched.deptName : null,\n      confidence_score: matched ? 0.96 : 0.40,\n      workflow: 'Workflow_A_Department_Auto_Assignment',\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "node-ai-classifier",
+      "name": "AI Category & Dept Classifier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NAGAR_DRISHTI_BACKEND_URL || 'http://localhost:5001' }}/api/admin/ai/auto-assign",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_shared_webhook_secret' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "complaint_id",
+              "value": "={{ $json.complaint_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-backend-auto-assign",
+      "name": "HTTP Request: Assign in Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [720, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  message: 'Department automatically assigned by AI based on category type',\n  classification: $json\n}) }}",
+        "options": {}
+      },
+      "id": "node-respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [960, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Category & Dept Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger (10m)": {
+      "main": [
+        [
+          {
+            "node": "AI Category & Dept Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Category & Dept Classifier": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Assign in Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request: Assign in Backend": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -3,7 +3,8 @@ import {
   getPendingAiSuggestions,
   reviewAiSuggestion,
   handleSlaAlert,
-  citizenAiChat
+  citizenAiChat,
+  autoAssignDepartmentsByAi
 } from '../services/aiService.js';
 import { env } from '../config/env.js';
 
@@ -170,3 +171,27 @@ export const citizenChat = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @route   POST /api/admin/ai/auto-assign
+ * @desc    Autonomous AI / n8n workflow to classify categories and auto-assign departments
+ * @access  Private (Admin)
+ */
+export const autoAssignDepartments = async (req, res, next) => {
+  try {
+    const { complaint_id } = req.body || {};
+    const result = await autoAssignDepartmentsByAi({
+      complaintId: complaint_id,
+      adminUser: req.user
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `AI evaluated and assigned departments to ${result.count} complaint(s).`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

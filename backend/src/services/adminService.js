@@ -508,3 +508,45 @@ export const escalateComplaint = async ({
     return complaint;
   }
 };
+
+/**
+ * Batch assign an entire incident cluster of duplicate complaints
+ */
+export const assignCluster = async ({ complaintIds, departmentId, adminUser, notes }) => {
+  const updatedList = [];
+  for (const cid of complaintIds) {
+    try {
+      const res = await assignDepartment({
+        complaintId: cid,
+        departmentId,
+        adminUser,
+        notes: notes || 'Assigned via Incident Hotspot cluster'
+      });
+      updatedList.push(res);
+    } catch (e) {
+      console.warn(`Could not assign complaint ${cid} in cluster:`, e.message);
+    }
+  }
+  return updatedList;
+};
+
+/**
+ * Batch resolve an entire incident cluster of duplicate complaints
+ */
+export const resolveCluster = async ({ complaintIds, resolutionNotes, adminUser }) => {
+  const updatedList = [];
+  for (const cid of complaintIds) {
+    try {
+      const res = await resolveComplaint({
+        complaintId: cid,
+        resolutionNotes,
+        adminUser
+      });
+      updatedList.push(res);
+    } catch (e) {
+      console.warn(`Could not resolve complaint ${cid} in cluster:`, e.message);
+    }
+  }
+  return updatedList;
+};
+

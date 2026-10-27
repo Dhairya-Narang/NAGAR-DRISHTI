@@ -4,7 +4,9 @@ import {
   assign,
   resolve,
   verify,
-  escalate
+  escalate,
+  batchAssign,
+  batchResolve
 } from '../controllers/adminController.js';
 import {
   getAdminSummary,
@@ -13,7 +15,8 @@ import {
 } from '../controllers/dashboardController.js';
 import {
   getPendingSuggestions,
-  reviewSuggestion
+  reviewSuggestion,
+  autoAssignDepartments
 } from '../controllers/aiController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
@@ -54,6 +57,12 @@ router.get('/ai/pending', getPendingSuggestions);
 router.post('/ai/review/:id', reviewSuggestion);
 
 /**
+ * @route   POST /api/admin/ai/auto-assign
+ * @desc    Autonomous AI / n8n workflow to auto-assign departments by category
+ */
+router.post('/ai/auto-assign', autoAssignDepartments);
+
+/**
  * @route   GET /api/admin/complaints
  * @desc    Filter and search complaints across the municipality
  */
@@ -83,4 +92,17 @@ router.post('/complaints/:id/verify', verify);
  */
 router.post('/complaints/:id/escalate', escalate);
 
+/**
+ * @route   POST /api/admin/clusters/assign
+ * @desc    Batch assign all complaints in an incident cluster
+ */
+router.post('/clusters/assign', batchAssign);
+
+/**
+ * @route   POST /api/admin/clusters/resolve
+ * @desc    Batch resolve all complaints in an incident cluster
+ */
+router.post('/clusters/resolve', batchResolve);
+
 export default router;
+
