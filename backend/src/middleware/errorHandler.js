@@ -4,7 +4,7 @@ import { env } from '../config/env.js';
  * Centralized Global Error Handler
  */
 export const errorHandler = (err, req, res, next) => {
-  const statusCode = err.statusCode || res.statusCode === 200 ? 500 : res.statusCode;
+  const statusCode = err.statusCode || (res.statusCode && res.statusCode !== 200 ? res.statusCode : 500);
   
   // Format standardized JSON response
   res.status(statusCode).json({

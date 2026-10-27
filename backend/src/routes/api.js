@@ -1,5 +1,6 @@
 import express from 'express';
 import healthRouter from './health.js';
+import authRouter from './auth.js';
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ router.get('/', (req, res) => {
     documentation: 'See README_Nagar_Drishti.md',
     endpoints: {
       health: '/api/health',
-      auth: '/api/auth (planned)',
+      auth: '/api/auth',
       complaints: '/api/complaints (planned)',
       admin: '/api/admin (planned)',
       dashboard: '/api/dashboard (planned)',
@@ -25,5 +26,8 @@ router.get('/', (req, res) => {
 
 // Health check endpoint
 router.use('/health', healthRouter);
+
+// Authentication & Profile routes
+router.use('/auth', authRouter);
 
 export default router;
