@@ -559,6 +559,8 @@ function renderAuth(mode = 'login', role = 'citizen') {
         </section>
     </div>`;
 
+    initAiAssistant();
+
     const authTheme = document.getElementById('authThemeToggle');
     if (authTheme) {
         authTheme.onclick = () => {
@@ -936,7 +938,245 @@ document.addEventListener('click', event => {
     }
 });
 
+// ==========================================================
+// AI ASSISTANT WIDGET & n8n WORKFLOW INTEGRATION
+// ==========================================================
+const N8N_WEBHOOK_KEY = 'nd_n8n_chat_webhook';
+let isAiChatOpen = false;
+
+function formatAiText(text = '') {
+    return esc(text)
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/• (.*?)(?=(\n|$))/g, '<li style="margin-left:16px">$1</li>')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+}
+
+function initAiAssistant() {
+    if (document.getElementById('aiFabBtn')) return;
+
+    const savedWebhook = localStorage.getItem(N8N_WEBHOOK_KEY) || '';
+
+    // Create FAB
+    const fab = document.createElement('button');
+    fab.type = 'button';
+    fab.id = 'aiFabBtn';
+    fab.className = 'ai-fab-btn';
+    fab.title = 'Open Nagar Drishti AI Assistant (n8n Workflow)';
+    fab.innerHTML = `
+        <span class="ai-fab-pulse"></span>
+        <span>✨ Civic AI</span>
+    `;
+
+    // Create Chat Window
+    const chatWindow = document.createElement('div');
+    chatWindow.id = 'aiChatWindow';
+    chatWindow.className = 'ai-chat-window closed';
+    chatWindow.innerHTML = `
+        <div class="ai-chat-header">
+            <div class="ai-chat-header-title">
+                <div class="ai-chat-avatar">🤖</div>
+                <div>
+                    <h3>Nagar Drishti AI</h3>
+                    <small><span class="ai-fab-pulse" style="width:6px;height:6px"></span> n8n Workflow ${savedWebhook ? '(Custom)' : '(Active)'}</small>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px">
+                <button type="button" class="ai-header-btn" id="aiConfigToggle" title="Configure n8n Webhook">⚙️</button>
+                <button type="button" class="ai-header-btn" id="aiCloseBtn" title="Close AI Assistant">✕</button>
+            </div>
+        </div>
+
+        <div class="ai-config-drawer" id="aiConfigDrawer">
+            <label>n8n Webhook Connection</label>
+            <p style="color:var(--muted);margin:0 0 6px">Connect your custom n8n webhook URL or leave blank to use the backend civic engine:</p>
+            <input type="url" id="aiWebhookUrlInput" placeholder="https://your-n8n.cloud/webhook/citizen-chat" value="${esc(savedWebhook)}">
+            <div class="ai-config-drawer-btns">
+                <button type="button" class="btn secondary" id="aiResetWebhookBtn" style="padding:4px 8px">Reset</button>
+                <button type="button" class="btn" id="aiSaveWebhookBtn" style="padding:4px 10px">Save Webhook</button>
+            </div>
+        </div>
+
+        <div class="ai-messages" id="aiMessagesList">
+            <div class="ai-msg bot">
+                <span class="ai-msg-badge">⚡ n8n Workflow</span>
+                <div>
+                    Namaste! 🙏 I am your <strong>Nagar Drishti Civic AI</strong>, powered by an autonomous <strong>n8n workflow</strong>.<br><br>
+                    How can I assist you today? You can ask about:
+                    <ul style="margin:6px 0 0;padding:0">
+                        <li style="margin-left:16px">Checking your complaint status & SLA</li>
+                        <li style="margin-left:16px">How to report potholes, water bursts, or streetlight issues</li>
+                        <li style="margin-left:16px">Reopening unresolved complaints</li>
+                    </ul>
+                </div>
+                <div class="ai-chips-list">
+                    <button type="button" class="ai-chip" data-query="Check my complaint status">🔍 My complaint status</button>
+                    <button type="button" class="ai-chip" data-query="What are the SLA resolution hours for each issue?">⏱ SLA resolution hours</button>
+                    <button type="button" class="ai-chip" data-query="How to report road damage / potholes?">🚧 How to report pothole</button>
+                    <button type="button" class="ai-chip" data-query="How do I reopen an issue that was not properly fixed?">🔄 Reopen an issue</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="ai-chat-footer">
+            <form class="ai-input-form" id="aiChatForm">
+                <input type="text" id="aiChatInput" placeholder="Ask about civic issues, complaints, or rules…" autocomplete="off" required>
+                <button type="submit" class="ai-send-btn" id="aiSendBtn" title="Send message">➤</button>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(fab);
+    document.body.appendChild(chatWindow);
+
+    // Event listeners for open / close
+    fab.onclick = () => {
+        isAiChatOpen = !isAiChatOpen;
+        chatWindow.classList.toggle('closed', !isAiChatOpen);
+        if (isAiChatOpen) {
+            setTimeout(() => document.getElementById('aiChatInput')?.focus(), 150);
+        }
+    };
+
+    document.getElementById('aiCloseBtn').onclick = () => {
+        isAiChatOpen = false;
+        chatWindow.classList.add('closed');
+    };
+
+    // Config Drawer
+    const configToggle = document.getElementById('aiConfigToggle');
+    const configDrawer = document.getElementById('aiConfigDrawer');
+    if (configToggle && configDrawer) {
+        configToggle.onclick = () => configDrawer.classList.toggle('open');
+    }
+
+    const saveWebhookBtn = document.getElementById('aiSaveWebhookBtn');
+    if (saveWebhookBtn) {
+        saveWebhookBtn.onclick = () => {
+            const inputVal = document.getElementById('aiWebhookUrlInput').value.trim();
+            if (inputVal) {
+                localStorage.setItem(N8N_WEBHOOK_KEY, inputVal);
+                notify('n8n Webhook URL saved! 🔗');
+            } else {
+                localStorage.removeItem(N8N_WEBHOOK_KEY);
+                notify('n8n Webhook reset to default.');
+            }
+            configDrawer.classList.remove('open');
+        };
+    }
+
+    const resetWebhookBtn = document.getElementById('aiResetWebhookBtn');
+    if (resetWebhookBtn) {
+        resetWebhookBtn.onclick = () => {
+            document.getElementById('aiWebhookUrlInput').value = '';
+            localStorage.removeItem(N8N_WEBHOOK_KEY);
+            notify('Webhook reset to default civic engine.');
+            configDrawer.classList.remove('open');
+        };
+    }
+
+    // Submit message handler
+    const chatForm = document.getElementById('aiChatForm');
+    if (chatForm) {
+        chatForm.onsubmit = async event => {
+            event.preventDefault();
+            const input = document.getElementById('aiChatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            await processAiQuery(text);
+        };
+    }
+
+    // Chip click delegation
+    chatWindow.addEventListener('click', event => {
+        const chip = event.target.closest('.ai-chip');
+        if (chip && chip.dataset.query) {
+            processAiQuery(chip.dataset.query);
+        }
+    });
+}
+
+async function processAiQuery(text) {
+    const list = document.getElementById('aiMessagesList');
+    if (!list) return;
+
+    // 1. Append User Message
+    const userMsg = document.createElement('div');
+    userMsg.className = 'ai-msg user';
+    userMsg.textContent = text;
+    list.appendChild(userMsg);
+
+    // 2. Append Typing Indicator
+    const typing = document.createElement('div');
+    typing.className = 'ai-typing';
+    typing.id = 'aiTypingIndicator';
+    typing.innerHTML = '<span></span><span></span><span></span>';
+    list.appendChild(typing);
+    list.scrollTop = list.scrollHeight;
+
+    const sendBtn = document.getElementById('aiSendBtn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    try {
+        const customWebhook = localStorage.getItem(N8N_WEBHOOK_KEY);
+        let reply = '';
+        let sourceTag = '⚡ n8n Workflow';
+
+        if (customWebhook && /^https?:\/\//i.test(customWebhook)) {
+            // Direct call to custom n8n webhook
+            const res = await fetch(customWebhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: text,
+                    userId: current?.id,
+                    userName: current?.name || 'Citizen',
+                    email: current?.email,
+                    role: current?.role || 'citizen',
+                    complaints: complaints.slice(0, 5)
+                })
+            });
+            const data = await res.json();
+            reply = data.reply || data.output || data.message || data.response || (typeof data === 'string' ? data : JSON.stringify(data));
+            sourceTag = '⚡ n8n Webhook';
+        } else {
+            // Route through backend /api/ai/chat
+            if (!token) {
+                reply = 'Please sign in to your Nagar Drishti account to access personalized complaint tracking and verified civic AI assistance.';
+            } else {
+                const res = await apiRequest('/ai/chat', {
+                    method: 'POST',
+                    body: { question: text }
+                });
+                reply = res.reply || 'No response received from civic AI.';
+                sourceTag = res.source === 'n8n_workflow' ? '⚡ n8n Workflow' : '🏛 Nagar Drishti AI';
+            }
+        }
+
+        // 3. Remove Typing & Append Bot Message
+        typing.remove();
+
+        const botMsg = document.createElement('div');
+        botMsg.className = 'ai-msg bot';
+        botMsg.innerHTML = `<span class="ai-msg-badge">${esc(sourceTag)}</span><div>${formatAiText(reply)}</div>`;
+        list.appendChild(botMsg);
+    } catch (err) {
+        typing.remove();
+        const errMsg = document.createElement('div');
+        errMsg.className = 'ai-msg bot';
+        errMsg.style.borderColor = 'var(--danger, #ef4444)';
+        errMsg.innerHTML = `<span class="ai-msg-badge" style="color:#ef4444">⚠️ Error</span><div>Could not get a response: ${esc(err.message)}</div>`;
+        list.appendChild(errMsg);
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+        list.scrollTop = list.scrollHeight;
+    }
+}
+
 async function startApp() {
+    initAiAssistant();
     const saved = readSession();
     if (!saved?.token) {
         clearSession();

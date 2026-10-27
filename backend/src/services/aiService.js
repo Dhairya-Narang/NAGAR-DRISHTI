@@ -1,4 +1,5 @@
 import { query, pool } from '../config/db.js';
+import { env } from '../config/env.js';
 import { assignDepartment } from './adminService.js';
 import { getComplaintsByCitizen } from './complaintService.js';
 import { createNotification } from './notificationService.js';
@@ -228,6 +229,45 @@ export const citizenAiChat = async ({ userId, userName = 'Citizen', question }) 
 
   // Retrieve citizen's own complaints (strict authorization barrier)
   const { complaints } = await getComplaintsByCitizen(userId, { limit: 10 });
+
+  // If an external n8n workflow webhook is configured, query n8n workflow first
+  const n8nWebhook = env.N8N_CHAT_WEBHOOK_URL || (env.N8N_WEBHOOK_BASE_URL ? `${env.N8N_WEBHOOK_BASE_URL.replace(/\/+$/, '')}/webhook/citizen-chat` : null);
+  if (n8nWebhook && env.NODE_ENV !== 'test') {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      const n8nRes = await fetch(n8nWebhook, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(env.N8N_WEBHOOK_SECRET ? { 'x-webhook-secret': env.N8N_WEBHOOK_SECRET } : {})
+        },
+        body: JSON.stringify({
+          userId,
+          userName,
+          question,
+          complaints: complaints.slice(0, 5)
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (n8nRes.ok) {
+        const n8nData = await n8nRes.json();
+        const replyText = n8nData.reply || n8nData.output || n8nData.message || n8nData.response || (typeof n8nData === 'string' ? n8nData : null);
+        if (replyText) {
+          return {
+            reply: replyText,
+            source: 'n8n_workflow',
+            workflowName: 'Workflow_E_Citizen_Assistant',
+            relevantComplaintsCount: complaints.length,
+            contextUsed: n8nData.contextUsed || ['n8n AI Workflow']
+          };
+        }
+      }
+    } catch (n8nErr) {
+      console.warn('n8n citizen-chat webhook invocation notice:', n8nErr.message);
+    }
+  }
 
   let reply = '';
   let contextUsed = [];

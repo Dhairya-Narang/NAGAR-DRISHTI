@@ -22,6 +22,7 @@ export const env = {
   DATABASE_URL: process.env.DATABASE_URL || '',
   
   N8N_WEBHOOK_BASE_URL: process.env.N8N_WEBHOOK_BASE_URL || '',
+  N8N_CHAT_WEBHOOK_URL: process.env.N8N_CHAT_WEBHOOK_URL || '',
   N8N_WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET || '',
   
   UPLOAD_MAX_SIZE_MB: parseInt(process.env.UPLOAD_MAX_SIZE_MB || '10', 10),
