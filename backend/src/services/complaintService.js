@@ -121,6 +121,7 @@ export const createComplaint = async ({
       id: complaintId,
       public_number: publicNumber,
       reporter_user_id: userId,
+      reporter_name: userName,
       title: title.trim(),
       description: description.trim(),
       category_id,
@@ -138,6 +139,8 @@ export const createComplaint = async ({
       updated_at: new Date().toISOString()
     };
     mockComplaints.set(complaintId, complaint);
+    global.__mockComplaintsList ??= [];
+    global.__mockComplaintsList.push(complaint);
 
     const initialHistory = [{
       id: `sh-${Date.now()}`,
@@ -544,4 +547,3 @@ export const updateComplaintStatus = async ({
     return complaint;
   }
 };
-

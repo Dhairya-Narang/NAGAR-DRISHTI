@@ -74,6 +74,15 @@ npm run dev
 ```
 The server will start at `http://localhost:5000`.
 
+### 5. Run the Connected Frontend
+In a second terminal, from the repository root, serve the frontend:
+```bash
+python3 -m http.server 8000 --directory frontend
+```
+Open `http://localhost:8000`. The frontend API URL defaults to `http://localhost:5000/api` and can be changed in `frontend/config.js`. Set `CORS_ORIGIN=http://localhost:8000` in `backend/.env` for this local setup. The frontend stores only the signed-in user and API token in browser storage; accounts and complaint data are managed by the backend.
+
+For persistent accounts and complaints, configure PostgreSQL/Supabase and apply the database schema and seed data. Without a database connection, the backend uses its in-memory development stores, which are cleared when the server restarts.
+
 ---
 
 ## API Endpoints Reference

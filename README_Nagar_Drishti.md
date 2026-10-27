@@ -4,8 +4,7 @@
 **Hackoween — Alta School of Technology**  
 **Project Planning Document | Smart Cities | Agentic AI**
 
-> **Project status:** Planning  
-> This repository documents the proposed solution, architecture, workflows, and implementation plan for the Hackoween hackathon. Features described here are planned and should not be considered implemented until completed and tested.
+> **Project status:** The frontend is connected to the backend API for authentication, complaint reporting and tracking, admin operations, dashboards, notifications, and AI recommendation review. The broader workflow and product ideas below remain proposals unless explicitly described as implemented and tested.
 
 ---
 
@@ -58,7 +57,7 @@ A web platform with separate citizen and administrator experiences, supported by
 | AI model | Model/API supported by n8n | Understand complaints and generate grounded suggestions |
 | Version control | GitHub | Source code, planning, issues, and project documentation |
 
-**Architecture note:** Supabase provides the PostgreSQL database. Render is planned to host the backend API. n8n orchestrates workflows and calls the AI model and application API. The frontend communicates with the backend API; it should not directly access privileged database credentials.
+**Architecture note:** Supabase provides the PostgreSQL database, and the backend API is configured for Render deployment. n8n can orchestrate workflows and call the application API. The browser frontend communicates with the backend API; it must not contain database credentials or other privileged secrets.
 
 The final choice of AI provider and deployment configuration will depend on available free tiers, limits, and hackathon requirements.
 
@@ -382,9 +381,9 @@ The following tables are planned for Supabase PostgreSQL. The exact schema and m
 
 ---
 
-## 9. Proposed Backend API
+## 9. Backend API
 
-These are proposed endpoints, not existing or implemented APIs.
+The backend implements the following routes. See [backend/README.md](./backend/README.md) for request details and setup instructions.
 
 ### Authentication
 - `POST /api/auth/register`
@@ -401,7 +400,6 @@ These are proposed endpoints, not existing or implemented APIs.
 
 ### Admin operations
 - `GET /api/admin/complaints`
-- `PATCH /api/admin/complaints/:id`
 - `POST /api/admin/complaints/:id/assign`
 - `POST /api/admin/complaints/:id/resolve`
 - `POST /api/admin/complaints/:id/verify`
@@ -411,16 +409,29 @@ These are proposed endpoints, not existing or implemented APIs.
 - `GET /api/dashboard/citizen-summary`
 - `GET /api/admin/dashboard-summary`
 - `GET /api/admin/activities`
-- `GET /api/admin/reports`
 - `GET /api/admin/departments`
 
 ### Notifications and AI
 - `GET /api/notifications`
 - `PATCH /api/notifications/:id/read`
+- `PATCH /api/notifications/read-all`
 - `POST /api/ai/chat`
+- `GET /api/admin/ai/pending`
 - `POST /api/admin/ai/review/:id`
 
 All routes must enforce authorization on the backend.
+
+## Running the Connected Frontend and Backend
+
+1. Configure and start the API as described in [backend/README.md](./backend/README.md). The API listens on `http://localhost:5000` by default.
+2. In a second terminal, serve the frontend:
+
+   ```bash
+   python3 -m http.server 8000 --directory frontend
+   ```
+
+3. Open `http://localhost:8000`. The frontend calls `http://localhost:5000/api` by default. To use a different backend, set `window.NAGAR_DRISHTI_API_URL` in [frontend/config.js](./frontend/config.js) to the API base URL, including `/api`.
+4. Set `CORS_ORIGIN=http://localhost:8000` in `backend/.env` when using this local frontend origin. For persistent shared accounts and complaints, configure the database and apply the schema and seed data as described in the backend guide.
 
 ---
 
