@@ -773,6 +773,7 @@ tbody tr:hover {
 
 .auth-side {
     background: linear-gradient(150deg, #035b3d, #0b9b60);
+    
     color: #fff;
     padding: 9vw 7vw;
     display: flex;
