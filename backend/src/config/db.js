@@ -16,22 +16,42 @@ if (env.SUPABASE_URL && (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)
   });
 }
 
-// Initialize PostgreSQL connection pool only if a non-placeholder DATABASE_URL is configured
-const isPlaceholderDbUrl =
-  !env.DATABASE_URL ||
-  env.DATABASE_URL.includes('[') ||
-  env.DATABASE_URL.includes('your-project.supabase.co') ||
-  (!env.isProduction && env.DATABASE_URL.includes('db.') && env.DATABASE_URL.includes('.supabase.co'));
+// Helper to normalize and resolve connection string (handles bracketed passwords and IPv4 pooler)
+function resolveDatabaseUrl(rawUrl) {
+  if (!rawUrl) return null;
+  let url = rawUrl.trim();
 
-if (!isPlaceholderDbUrl) {
+  // Strip accidental brackets from password: postgres:[pass]@host -> postgres:pass@host
+  url = url.replace(/:\s*\[([^\]]+)\]@/, (m, p) => `:${p}@`);
+
+  // Detect un-replaced placeholders
+  if (url.includes('your-project.supabase.co') || url.includes('[YOUR-PASSWORD]')) {
+    return null;
+  }
+
+  // Auto-route known Supabase project to IPv4 pooler if direct IPv6 host is used
+  if (url.includes('db.gulglhwjkjoyfnjzzmpb.supabase.co')) {
+    url = url.replace('db.gulglhwjkjoyfnjzzmpb.supabase.co', 'aws-0-eu-west-1.pooler.supabase.com');
+    if (!url.includes('postgres.gulglhwjkjoyfnjzzmpb')) {
+      url = url.replace('postgres:', 'postgres.gulglhwjkjoyfnjzzmpb:');
+    }
+  }
+
+  return url;
+}
+
+const resolvedDbUrl = resolveDatabaseUrl(env.DATABASE_URL);
+
+if (resolvedDbUrl && env.NODE_ENV !== 'test') {
+  const isSupabase = resolvedDbUrl.includes('supabase.co') || resolvedDbUrl.includes('supabase.com') || resolvedDbUrl.includes('pooler');
   pool = new Pool({
-    connectionString: env.DATABASE_URL,
-    ssl: env.isProduction || env.DATABASE_URL.includes('supabase.co')
+    connectionString: resolvedDbUrl,
+    ssl: env.isProduction || isSupabase
       ? { rejectUnauthorized: false }
       : false,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
   });
 
   pool.on('error', (err) => {
