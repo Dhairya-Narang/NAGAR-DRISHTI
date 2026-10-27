@@ -1,0 +1,41 @@
+# ==========================================================
+# Nagar Drishti — Render Infrastructure as Code Blueprint
+# https://render.com/docs/blueprint-spec
+# ==========================================================
+
+services:
+  - type: web
+    name: nagar-drishti-backend
+    runtime: node
+    plan: free
+    region: singapore # Close to India (Delhi-NCR)
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: '*'
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: N8N_WEBHOOK_BASE_URL
+        sync: false
+      - key: N8N_WEBHOOK_SECRET
+        generateValue: true
+      - key: UPLOAD_MAX_SIZE_MB
+        value: 10
