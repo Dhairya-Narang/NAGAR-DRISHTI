@@ -19,9 +19,9 @@ if (env.SUPABASE_URL && (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)
 // Initialize PostgreSQL connection pool only if a non-placeholder DATABASE_URL is configured
 const isPlaceholderDbUrl =
   !env.DATABASE_URL ||
-  env.DATABASE_URL.includes('[YOUR-PASSWORD]') ||
-  env.DATABASE_URL.includes('[YOUR-DB-PASSWORD]') ||
-  env.DATABASE_URL.includes('your-project.supabase.co');
+  env.DATABASE_URL.includes('[') ||
+  env.DATABASE_URL.includes('your-project.supabase.co') ||
+  (!env.isProduction && env.DATABASE_URL.includes('db.') && env.DATABASE_URL.includes('.supabase.co'));
 
 if (!isPlaceholderDbUrl) {
   pool = new Pool({
