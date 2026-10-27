@@ -11,6 +11,10 @@ import {
   getActivities,
   getDepartments
 } from '../controllers/dashboardController.js';
+import {
+  getPendingSuggestions,
+  reviewSuggestion
+} from '../controllers/aiController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -36,6 +40,18 @@ router.get('/activities', getActivities);
  * @desc    Get all active municipal departments
  */
 router.get('/departments', getDepartments);
+
+/**
+ * @route   GET /api/admin/ai/pending
+ * @desc    Get AI suggestions awaiting review in AI Operations Centre
+ */
+router.get('/ai/pending', getPendingSuggestions);
+
+/**
+ * @route   POST /api/admin/ai/review/:id
+ * @desc    Accept, reject, or modify an AI suggestion (Human-in-the-loop)
+ */
+router.post('/ai/review/:id', reviewSuggestion);
 
 /**
  * @route   GET /api/admin/complaints

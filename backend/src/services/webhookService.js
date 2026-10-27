@@ -6,7 +6,7 @@ import { env } from '../config/env.js';
  * @param {object} payload - Event payload
  */
 export const dispatchN8nWebhook = async (endpoint, payload) => {
-  if (!env.N8N_WEBHOOK_BASE_URL) {
+  if (!env.N8N_WEBHOOK_BASE_URL || env.N8N_WEBHOOK_BASE_URL.includes('your-domain.com')) {
     if (env.NODE_ENV === 'development') {
       console.log(`[n8n Webhook (Mock)] Dispatched to ${endpoint}:`, JSON.stringify(payload).slice(0, 150));
     }

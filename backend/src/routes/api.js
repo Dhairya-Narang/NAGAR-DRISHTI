@@ -5,6 +5,8 @@ import complaintsRouter from './complaints.js';
 import adminRouter from './admin.js';
 import dashboardRouter from './dashboard.js';
 import notificationsRouter from './notifications.js';
+import webhooksRouter from './webhooks.js';
+import aiRouter from './ai.js';
 
 const router = express.Router();
 
@@ -22,8 +24,8 @@ router.get('/', (req, res) => {
       admin: '/api/admin',
       dashboard: '/api/dashboard',
       notifications: '/api/notifications',
-      ai: '/api/ai (planned)',
-      webhooks: '/api/webhooks (planned)'
+      ai: '/api/ai/chat',
+      webhooks: '/api/webhooks/n8n/suggestions'
     }
   });
 });
@@ -45,5 +47,11 @@ router.use('/dashboard', dashboardRouter);
 
 // User Notifications routes
 router.use('/notifications', notificationsRouter);
+
+// Incoming n8n Webhook routes
+router.use('/webhooks', webhooksRouter);
+
+// AI Assistant routes
+router.use('/ai', aiRouter);
 
 export default router;
