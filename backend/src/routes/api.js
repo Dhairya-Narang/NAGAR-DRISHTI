@@ -3,6 +3,8 @@ import healthRouter from './health.js';
 import authRouter from './auth.js';
 import complaintsRouter from './complaints.js';
 import adminRouter from './admin.js';
+import dashboardRouter from './dashboard.js';
+import notificationsRouter from './notifications.js';
 
 const router = express.Router();
 
@@ -18,8 +20,8 @@ router.get('/', (req, res) => {
       auth: '/api/auth',
       complaints: '/api/complaints',
       admin: '/api/admin',
-      dashboard: '/api/dashboard (planned)',
-      notifications: '/api/notifications (planned)',
+      dashboard: '/api/dashboard',
+      notifications: '/api/notifications',
       ai: '/api/ai (planned)',
       webhooks: '/api/webhooks (planned)'
     }
@@ -37,5 +39,11 @@ router.use('/complaints', complaintsRouter);
 
 // Admin Operations routes
 router.use('/admin', adminRouter);
+
+// Citizen Dashboard routes
+router.use('/dashboard', dashboardRouter);
+
+// User Notifications routes
+router.use('/notifications', notificationsRouter);
 
 export default router;

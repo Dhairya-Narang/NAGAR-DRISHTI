@@ -6,6 +6,11 @@ import {
   verify,
   escalate
 } from '../controllers/adminController.js';
+import {
+  getAdminSummary,
+  getActivities,
+  getDepartments
+} from '../controllers/dashboardController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -13,6 +18,24 @@ const router = express.Router();
 // All Admin Operations require authentication AND admin role
 router.use(authenticateToken);
 router.use(authorizeRoles('admin'));
+
+/**
+ * @route   GET /api/admin/dashboard-summary
+ * @desc    Get real-time municipal dashboard summary counts & metrics
+ */
+router.get('/dashboard-summary', getAdminSummary);
+
+/**
+ * @route   GET /api/admin/activities
+ * @desc    Get paginated municipal activity log
+ */
+router.get('/activities', getActivities);
+
+/**
+ * @route   GET /api/admin/departments
+ * @desc    Get all active municipal departments
+ */
+router.get('/departments', getDepartments);
 
 /**
  * @route   GET /api/admin/complaints
