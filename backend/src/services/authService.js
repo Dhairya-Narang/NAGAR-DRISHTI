@@ -8,6 +8,80 @@ const mockUsers = new Map();
 const mockCitizenProfiles = new Map();
 const mockAdminProfiles = new Map();
 
+// Pre-seed demo users in memory fallback
+const initDemoUsers = () => {
+  const demoUsers = [
+    {
+      id: 'e1111111-1111-1111-1111-111111111111',
+      name: 'Rajesh Sharma',
+      email: 'admin@nagardrishti.gov.in',
+      password_hash: '$2b$10$pX7QomZlaIPi9r4BLehb/uJS3pFn/7OSS41pSKPN76hgvUqRsN3P6',
+      role: 'admin',
+      phone: '+91-9811001122',
+      is_active: true
+    },
+    {
+      id: 'e2222222-2222-2222-2222-222222222222',
+      name: 'Anita Verma',
+      email: 'pwd.officer@nagardrishti.gov.in',
+      password_hash: '$2b$10$pX7QomZlaIPi9r4BLehb/uJS3pFn/7OSS41pSKPN76hgvUqRsN3P6',
+      role: 'admin',
+      phone: '+91-9811002233',
+      is_active: true
+    },
+    {
+      id: 'e3333333-3333-3333-3333-333333333333',
+      name: 'Vikram Malhotra',
+      email: 'citizen@example.com',
+      password_hash: '$2b$10$llNWhuvxXOh3zfner1WYre5U75ZEY.nh4rLo5I4DJ4o5fr1Yb/bNW',
+      role: 'citizen',
+      phone: '+91-9871234567',
+      is_active: true
+    },
+    {
+      id: 'e4444444-4444-4444-4444-444444444444',
+      name: 'Priya Sharma',
+      email: 'priya.sharma@example.com',
+      password_hash: '$2b$10$llNWhuvxXOh3zfner1WYre5U75ZEY.nh4rLo5I4DJ4o5fr1Yb/bNW',
+      role: 'citizen',
+      phone: '+91-9871239999',
+      is_active: true
+    }
+  ];
+
+  for (const u of demoUsers) {
+    mockUsers.set(u.email, u);
+    mockUsers.set(u.id, u);
+  }
+
+  mockAdminProfiles.set('e1111111-1111-1111-1111-111111111111', {
+    user_id: 'e1111111-1111-1111-1111-111111111111',
+    employee_id: 'ND-ADM-001',
+    designation: 'Chief Municipal Commissioner',
+    is_superadmin: true
+  });
+  mockAdminProfiles.set('e2222222-2222-2222-2222-222222222222', {
+    user_id: 'e2222222-2222-2222-2222-222222222222',
+    employee_id: 'ND-PWD-102',
+    designation: 'Executive Engineer (Roads)',
+    department_name: 'Public Works Department (PWD)'
+  });
+  mockCitizenProfiles.set('e3333333-3333-3333-3333-333333333333', {
+    user_id: 'e3333333-3333-3333-3333-333333333333',
+    address: 'Flat 402, Green Glen Heights, Sector 14',
+    ward: 'Ward 12',
+    city: 'Delhi-NCR'
+  });
+  mockCitizenProfiles.set('e4444444-4444-4444-4444-444444444444', {
+    user_id: 'e4444444-4444-4444-4444-444444444444',
+    address: 'House 22, Lane 4, Sector 14 Market Area',
+    ward: 'Ward 12',
+    city: 'Delhi-NCR'
+  });
+};
+
+initDemoUsers();
+
 /**
  * Hash a plain text password
  */
